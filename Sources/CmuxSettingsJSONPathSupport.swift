@@ -18,6 +18,8 @@ extension CmuxSettingsFileStore {
         "app.warnBeforeQuit",
         "app.renameSelectsExistingName",
         "app.commandPaletteSearchesAllSurfaces",
+        "app.paneDividerColorLight",
+        "app.paneDividerColorDark",
         "terminal.showScrollBar",
         "terminal.autoResumeAgentSessions",
         "notifications.dockBadge",

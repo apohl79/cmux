@@ -282,6 +282,18 @@
           "type": "boolean",
           "default": false,
           "description": "Search every surface in the command palette switcher instead of only the active workspace."
+        },
+        "paneDividerColorLight": {
+          "type": ["string", "null"],
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "default": null,
+          "description": "Override color for the divider between panes in light mode. Hex (#RRGGBB or #RRGGBBAA). Null falls back to the auto-derived divider color."
+        },
+        "paneDividerColorDark": {
+          "type": ["string", "null"],
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "default": null,
+          "description": "Override color for the divider between panes in dark mode. Hex (#RRGGBB or #RRGGBBAA). Null falls back to the auto-derived divider color."
         }
       }
     },

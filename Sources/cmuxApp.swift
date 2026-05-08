@@ -5174,6 +5174,8 @@ struct SettingsView: View {
     @AppStorage("sidebarTintHexDark") private var sidebarTintHexDark: String?
     @AppStorage("sidebarTintOpacity") private var sidebarTintOpacity = SidebarTintDefaults.opacity
     @AppStorage("sidebarMatchTerminalBackground") private var sidebarMatchTerminalBackground = false
+    @AppStorage(PaneDividerColorSettings.lightHexKey) private var paneDividerHexLight: String?
+    @AppStorage(PaneDividerColorSettings.darkHexKey) private var paneDividerHexDark: String?
     @AppStorage(RightSidebarBetaFeatureSettings.feedEnabledKey)
     private var rightSidebarFeedEnabled = RightSidebarBetaFeatureSettings.defaultFeedEnabled
     @AppStorage(RightSidebarBetaFeatureSettings.dockEnabledKey)
@@ -5480,6 +5482,28 @@ struct SettingsView: View {
             set: { newColor in
                 let nsColor = NSColor(newColor)
                 sidebarTintHexDark = nsColor.hexString()
+            }
+        )
+    }
+
+    private var paneDividerLightBinding: Binding<Color> {
+        Binding(
+            get: {
+                Color(nsColor: NSColor(hex: paneDividerHexLight ?? "") ?? .separatorColor)
+            },
+            set: { newColor in
+                paneDividerHexLight = NSColor(newColor).hexString(includeAlpha: true)
+            }
+        )
+    }
+
+    private var paneDividerDarkBinding: Binding<Color> {
+        Binding(
+            get: {
+                Color(nsColor: NSColor(hex: paneDividerHexDark ?? "") ?? .separatorColor)
+            },
+            set: { newColor in
+                paneDividerHexDark = NSColor(newColor).hexString(includeAlpha: true)
             }
         )
     }
@@ -5814,6 +5838,66 @@ struct SettingsView: View {
                                 AppIconSettings.applyIcon(mode)
                             }
                         )
+
+                        SettingsCardDivider()
+
+                        SettingsCardRow(
+                            configurationReview: .json("app.paneDividerColorLight"),
+                            String(
+                                localized: "settings.app.paneDividerColor",
+                                defaultValue: "Pane Divider Color"
+                            ),
+                            subtitle: String(
+                                localized: "settings.app.paneDividerColor.subtitle",
+                                defaultValue: "Override the color of dividers between panes. Leave at default to derive from the terminal background."
+                            )
+                        ) {
+                            HStack(spacing: 12) {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(
+                                        String(
+                                            localized: "settings.app.paneDividerColor.light",
+                                            defaultValue: "Light"
+                                        )
+                                    )
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                    ColorPicker(
+                                        "",
+                                        selection: paneDividerLightBinding,
+                                        supportsOpacity: true
+                                    )
+                                    .labelsHidden()
+                                }
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(
+                                        String(
+                                            localized: "settings.app.paneDividerColor.dark",
+                                            defaultValue: "Dark"
+                                        )
+                                    )
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                    ColorPicker(
+                                        "",
+                                        selection: paneDividerDarkBinding,
+                                        supportsOpacity: true
+                                    )
+                                    .labelsHidden()
+                                }
+                                Button(
+                                    String(
+                                        localized: "settings.app.paneDividerColor.reset",
+                                        defaultValue: "Reset"
+                                    )
+                                ) {
+                                    paneDividerHexLight = nil
+                                    paneDividerHexDark = nil
+                                }
+                                .controlSize(.small)
+                                .disabled(paneDividerHexLight == nil && paneDividerHexDark == nil)
+                            }
+                        }
 
                         SettingsCardDivider()
 

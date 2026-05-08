@@ -88,6 +88,8 @@ extension CmuxSettingsFileStore {
         "app.hideTabCloseButton",
         "app.renameSelectsExistingName",
         "app.commandPaletteSearchesAllSurfaces",
+        "app.paneDividerColorLight",
+        "app.paneDividerColorDark",
         "workspaceGroups.newWorkspacePlacement",
         "terminal.showScrollBar",
         "terminal.copyOnSelect",

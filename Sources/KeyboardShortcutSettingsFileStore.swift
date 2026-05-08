@@ -508,6 +508,24 @@ final class CmuxSettingsFileStore {
         if let value = jsonBool(section["commandPaletteSearchesAllSurfaces"]) {
             snapshot.managedUserDefaults[AppCatalogSection().commandPaletteSearchesAllSurfaces.userDefaultsKey] = .bool(value)
         }
+        if section.keys.contains("paneDividerColorLight") {
+            if let value = parseNullableHex(
+                section["paneDividerColorLight"],
+                path: "app.paneDividerColorLight",
+                sourcePath: sourcePath
+            ) {
+                snapshot.managedUserDefaults[PaneDividerColorSettings.lightHexKey] = .nullableString(value)
+            }
+        }
+        if section.keys.contains("paneDividerColorDark") {
+            if let value = parseNullableHex(
+                section["paneDividerColorDark"],
+                path: "app.paneDividerColorDark",
+                sourcePath: sourcePath
+            ) {
+                snapshot.managedUserDefaults[PaneDividerColorSettings.darkHexKey] = .nullableString(value)
+            }
+        }
     }
 
     private func parseNotificationsSection(

@@ -373,6 +373,22 @@ final class CmuxSettingsFileStore {
         if let value = jsonBool(section["commandPaletteSearchesAllSurfaces"]) {
             snapshot.managedUserDefaults[CommandPaletteSwitcherSearchSettings.searchAllSurfacesKey] = .bool(value)
         }
+        if section.keys.contains("paneDividerColorLight") {
+            guard let value = parseNullableHex(
+                section["paneDividerColorLight"],
+                path: "app.paneDividerColorLight",
+                sourcePath: sourcePath
+            ) else { return }
+            snapshot.managedUserDefaults[PaneDividerColorSettings.lightHexKey] = .nullableString(value)
+        }
+        if section.keys.contains("paneDividerColorDark") {
+            guard let value = parseNullableHex(
+                section["paneDividerColorDark"],
+                path: "app.paneDividerColorDark",
+                sourcePath: sourcePath
+            ) else { return }
+            snapshot.managedUserDefaults[PaneDividerColorSettings.darkHexKey] = .nullableString(value)
+        }
     }
 
     private func parseNotificationsSection(
@@ -1227,6 +1243,8 @@ final class CmuxSettingsFileStore {
                     "warnBeforeQuit": QuitWarningSettings.defaultWarnBeforeQuit,
                     "renameSelectsExistingName": CommandPaletteRenameSelectionSettings.defaultSelectAllOnFocus,
                     "commandPaletteSearchesAllSurfaces": CommandPaletteSwitcherSearchSettings.defaultSearchAllSurfaces,
+                    "paneDividerColorLight": NSNull(),
+                    "paneDividerColorDark": NSNull(),
                 ],
             ],
             [

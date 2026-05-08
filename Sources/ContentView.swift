@@ -2176,6 +2176,8 @@ struct ContentView: View {
 
     @AppStorage("sidebarBlendMode") private var sidebarBlendMode = SidebarBlendModeOption.withinWindow.rawValue
     @AppStorage("sidebarMatchTerminalBackground") private var sidebarMatchTerminalBackground = false
+    @AppStorage(PaneDividerColorSettings.lightHexKey) private var paneDividerHexLight: String?
+    @AppStorage(PaneDividerColorSettings.darkHexKey) private var paneDividerHexDark: String?
     @AppStorage("sidebarTintOpacity") private var sidebarTintOpacity = SidebarTintDefaults.opacity
     @AppStorage("sidebarTintHex") private var sidebarTintHex = SidebarTintDefaults.hex
     @AppStorage("sidebarTintHexLight") private var sidebarTintHexLight: String?
@@ -3115,6 +3117,14 @@ struct ContentView: View {
             guard sidebarState.isVisible,
                   sidebarBlendMode == SidebarBlendModeOption.withinWindow.rawValue else { return }
             schedulePortalGeometrySynchronize()
+        })
+
+        view = AnyView(view.onChange(of: paneDividerHexLight) { _ in
+            tabManager.applyWindowBackdropModeForAllTabs(reason: "paneDividerColorChanged")
+        })
+
+        view = AnyView(view.onChange(of: paneDividerHexDark) { _ in
+            tabManager.applyWindowBackdropModeForAllTabs(reason: "paneDividerColorChanged")
         })
 
         view = AnyView(view.onChange(of: isMinimalMode) { _, _ in

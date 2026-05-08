@@ -792,9 +792,19 @@ final class BrowserProfileStore: ObservableObject {
     }
 }
 
+enum BrowserTerminalLinkPlacement: String, CaseIterable, Identifiable {
+    case split
+    case newSurface
+
+    var id: String { rawValue }
+}
+
 enum BrowserLinkOpenSettings {
     static let openTerminalLinksInCmuxBrowserKey = "browserOpenTerminalLinksInCmuxBrowser"
     static let defaultOpenTerminalLinksInCmuxBrowser: Bool = true
+
+    static let terminalLinkPlacementKey = "browserTerminalLinkPlacement"
+    static let defaultTerminalLinkPlacement: BrowserTerminalLinkPlacement = .split
 
     static let openSidebarPullRequestLinksInCmuxBrowserKey = "browserOpenSidebarPullRequestLinksInCmuxBrowser"
     static let defaultOpenSidebarPullRequestLinksInCmuxBrowser: Bool = true
@@ -816,6 +826,14 @@ enum BrowserLinkOpenSettings {
             return defaultOpenTerminalLinksInCmuxBrowser
         }
         return defaults.bool(forKey: openTerminalLinksInCmuxBrowserKey)
+    }
+
+    static func terminalLinkPlacement(defaults: UserDefaults = .standard) -> BrowserTerminalLinkPlacement {
+        guard let raw = defaults.string(forKey: terminalLinkPlacementKey),
+              let placement = BrowserTerminalLinkPlacement(rawValue: raw) else {
+            return defaultTerminalLinkPlacement
+        }
+        return placement
     }
 
     static func openSidebarPullRequestLinksInCmuxBrowser(defaults: UserDefaults = .standard) -> Bool {

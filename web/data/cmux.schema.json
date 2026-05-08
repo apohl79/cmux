@@ -647,6 +647,12 @@
           "default": true,
           "description": "Open clicked terminal links in the embedded browser."
         },
+        "terminalLinkPlacement": {
+          "type": "string",
+          "enum": ["split", "newSurface"],
+          "default": "split",
+          "description": "Where to place the embedded browser when a terminal link is opened and no existing browser pane is available. \"split\" creates a new browser pane via horizontal split (default, upstream behavior). \"newSurface\" opens the link as a new browser tab inside the source terminal pane, leaving the layout unchanged."
+        },
         "interceptTerminalOpenCommandInCmuxBrowser": {
           "type": "boolean",
           "default": true,

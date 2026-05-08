@@ -3331,6 +3331,12 @@ class GhosttyApp {
             cmuxDebugLog("link.openURL opening in existing browser pane=\(targetPane)")
             #endif
             openedInBrowser = workspace.newBrowserSurface(inPane: targetPane, url: url, focus: true) != nil
+        } else if BrowserLinkOpenSettings.terminalLinkPlacement() == .newSurface,
+                  let sourcePane = workspace.paneId(forPanelId: sourcePanelId) {
+            #if DEBUG
+            cmuxDebugLog("link.openURL opening as new browser surface in source pane=\(sourcePane)")
+            #endif
+            openedInBrowser = workspace.newBrowserSurface(inPane: sourcePane, url: url, focus: true) != nil
         } else {
             #if DEBUG
             cmuxDebugLog("link.openURL opening as new browser split from surface=\(sourcePanelId)")

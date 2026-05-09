@@ -84,6 +84,7 @@ extension CmuxSettingsFileStore {
                     "commandPaletteSearchesAllSurfaces": AppCatalogSection().commandPaletteSearchesAllSurfaces.defaultValue,
                     "paneDividerColorLight": NSNull(),
                     "paneDividerColorDark": NSNull(),
+                    "paneDividerThickness": Int(PaneDividerThicknessSettings.defaultPoints),
                 ],
             ],
             [

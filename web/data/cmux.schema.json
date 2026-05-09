@@ -391,6 +391,13 @@
           "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
           "default": null,
           "description": "Override color for the divider between panes in dark mode. Hex (#RRGGBB or #RRGGBBAA). Null falls back to the auto-derived divider color."
+        },
+        "paneDividerThickness": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 6,
+          "default": 1,
+          "description": "Thickness in points of the divider drawn between panes. Default 1 matches the system thin style."
         }
       }
     },

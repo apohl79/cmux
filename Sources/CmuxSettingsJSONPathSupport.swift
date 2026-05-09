@@ -90,6 +90,7 @@ extension CmuxSettingsFileStore {
         "app.commandPaletteSearchesAllSurfaces",
         "app.paneDividerColorLight",
         "app.paneDividerColorDark",
+        "app.paneDividerThickness",
         "workspaceGroups.newWorkspacePlacement",
         "terminal.showScrollBar",
         "terminal.copyOnSelect",

@@ -8936,10 +8936,18 @@ class TerminalController {
             let sourcePaneUUID = ws.paneId(forPanelId: sourceSurfaceId)?.id
             let focus = v2FocusAllowed(requested: v2Bool(params, "focus") ?? false)
 
+            let v2Placement = BrowserLinkOpenSettings.terminalLinkPlacement()
+
             var createdSplit = true
             var placementStrategy = "split_right"
             let createdPanel: BrowserPanel?
-            if let targetPane = ws.preferredBrowserTargetPane(fromPanelId: sourceSurfaceId) {
+            if v2Placement == .newSurface, let sourcePane = ws.paneId(forPanelId: sourceSurfaceId) {
+                // newSurface always foregrounds the new tab — otherwise the link
+                // result would silently land behind the source surface.
+                createdPanel = ws.newBrowserSurface(inPane: sourcePane, url: url, focus: true)
+                createdSplit = false
+                placementStrategy = "newSurface_in_source_pane"
+            } else if let targetPane = ws.preferredBrowserTargetPane(fromPanelId: sourceSurfaceId) {
                 createdPanel = ws.newBrowserSurface(inPane: targetPane, url: url, focus: focus)
                 createdSplit = false
                 placementStrategy = "reuse_right_sibling"

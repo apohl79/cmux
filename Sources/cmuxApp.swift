@@ -5109,6 +5109,8 @@ struct SettingsView: View {
     @AppStorage(BrowserImportHintSettings.dismissedKey) private var isBrowserImportHintDismissed = BrowserImportHintSettings.defaultDismissed
     @AppStorage(ReactGrabSettings.versionKey) private var reactGrabVersion = ReactGrabSettings.defaultVersion
     @AppStorage(BrowserLinkOpenSettings.openTerminalLinksInCmuxBrowserKey) private var openTerminalLinksInCmuxBrowser = BrowserLinkOpenSettings.defaultOpenTerminalLinksInCmuxBrowser
+    @AppStorage(BrowserLinkOpenSettings.terminalLinkPlacementKey)
+    private var browserTerminalLinkPlacementRaw = BrowserLinkOpenSettings.defaultTerminalLinkPlacement.rawValue
     @AppStorage(BrowserLinkOpenSettings.interceptTerminalOpenCommandInCmuxBrowserKey)
     private var interceptTerminalOpenCommandInCmuxBrowser = BrowserLinkOpenSettings.initialInterceptTerminalOpenCommandInCmuxBrowserValue()
     @AppStorage(BrowserLinkOpenSettings.browserHostWhitelistKey) private var browserHostWhitelist = BrowserLinkOpenSettings.defaultBrowserHostWhitelist
@@ -6719,6 +6721,22 @@ struct SettingsView: View {
                                 .controlSize(.small)
                         }
 
+                        if openTerminalLinksInCmuxBrowser || interceptTerminalOpenCommandInCmuxBrowser {
+                            SettingsCardDivider()
+
+                            SettingsPickerRow(
+                                configurationReview: .json("browser.terminalLinkPlacement"),
+                                String(localized: "settings.browser.terminalLinkPlacement", defaultValue: "Terminal Link Placement"),
+                                subtitle: String(localized: "settings.browser.terminalLinkPlacement.subtitle", defaultValue: "When no browser pane exists yet, decide whether a clicked terminal link opens as a new split pane or as a new tab in the source pane."),
+                                controlWidth: pickerColumnWidth,
+                                selection: $browserTerminalLinkPlacementRaw
+                            ) {
+                                ForEach(BrowserTerminalLinkPlacement.allCases) { placement in
+                                    Text(placement.displayName).tag(placement.rawValue)
+                                }
+                            }
+                        }
+
                         SettingsCardDivider()
 
                         SettingsCardRow(
@@ -7420,6 +7438,7 @@ struct SettingsView: View {
         rightSidebarFeedEnabled = RightSidebarBetaFeatureSettings.defaultFeedEnabled
         rightSidebarDockEnabled = RightSidebarBetaFeatureSettings.defaultDockEnabled
         openTerminalLinksInCmuxBrowser = BrowserLinkOpenSettings.defaultOpenTerminalLinksInCmuxBrowser
+        browserTerminalLinkPlacementRaw = BrowserLinkOpenSettings.defaultTerminalLinkPlacement.rawValue
         interceptTerminalOpenCommandInCmuxBrowser = BrowserLinkOpenSettings.defaultInterceptTerminalOpenCommandInCmuxBrowser
         browserHostWhitelist = BrowserLinkOpenSettings.defaultBrowserHostWhitelist
         browserExternalOpenPatterns = BrowserLinkOpenSettings.defaultBrowserExternalOpenPatterns

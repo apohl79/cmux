@@ -539,6 +539,21 @@ enum BrowserTerminalLinkPlacement: String, CaseIterable, Identifiable {
     case newSurface
 
     var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .split:
+            return String(
+                localized: "browser.terminalLinkPlacement.split",
+                defaultValue: "New Split"
+            )
+        case .newSurface:
+            return String(
+                localized: "browser.terminalLinkPlacement.newSurface",
+                defaultValue: "New Tab in Source Pane"
+            )
+        }
+    }
 }
 
 enum BrowserLinkOpenSettings {

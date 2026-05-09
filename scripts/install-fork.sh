@@ -1,28 +1,33 @@
 #!/usr/bin/env bash
 # Build a Release cmux.app from the current worktree and install it as
-# /Applications/cmux-fork.app (or a custom path).
+# /Applications/cmux.app (or a custom path).
 #
 # Usage:
-#   ./scripts/install-fork.sh                # build + install to /Applications/cmux-fork.app
+#   ./scripts/install-fork.sh                # build + install to /Applications/cmux.app
 #   ./scripts/install-fork.sh --skip-build   # use the pre-built artifact in build/release
-#   ./scripts/install-fork.sh --target ~/Applications/cmux-fork.app
+#   ./scripts/install-fork.sh --skip-deps    # skip Homebrew/submodule preflight
+#   ./scripts/install-fork.sh --target ~/Applications/cmux.app
 #   APP_NAME=cmux-foo ./scripts/install-fork.sh
 #
 # Requirements:
+#   - macOS with Homebrew installed (brew on PATH)
 #   - Xcode 26.x with Metal Toolchain
-#   - zig 0.15.x on PATH (or at /opt/homebrew/opt/zig@0.15/bin)
 #   - sudo access if installing under /Applications
 #
 # What it does:
-#   1. (Unless --skip-build) Builds Release arm64 cmux.app via xcodebuild,
+#   1. Ensures Homebrew dependencies are installed (zig@0.15) and the
+#      vendor/bonsplit git submodule is initialized + up to date.
+#   2. (Unless --skip-build) Builds Release arm64 cmux.app via xcodebuild,
 #      with CODE_SIGNING_ALLOWED=NO. Output: build/release/Build/Products/Release/cmux.app
-#   2. Removes any existing app at the target path.
-#   3. Copies the build artifact with ditto (preserving extended attributes,
+#   3. Removes any existing app at the target path.
+#   4. Copies the build artifact with ditto (preserving extended attributes,
 #      symlinks, and HFS metadata).
-#   4. Chowns the installed app to the invoking user.
-#   5. Ad-hoc codesigns the bundle so macOS will launch it without a developer cert.
-#   6. Strips the com.apple.quarantine xattr so first launch isn't blocked.
-#   7. Verifies the installed binary is executable and reports the bundle id + path.
+#   5. Chowns the installed app to the invoking user.
+#   6. Strips com.apple.FinderInfo / resource forks (codesign rejects them).
+#   7. Depth-first ad-hoc codesigns nested bundles (Frameworks/, PlugIns/)
+#      then the outer bundle, so the resource manifest stays valid.
+#   8. Strips the com.apple.quarantine xattr so first launch isn't blocked.
+#   9. Verifies the installed binary is executable and reports the bundle id + path.
 #
 # Note: ad-hoc signing is only safe for a personal/local fork. Don't redistribute
 # the resulting app — it has no Developer ID signature and won't pass Gatekeeper
@@ -34,15 +39,20 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 cd "$PROJECT_DIR"
 
-APP_NAME="${APP_NAME:-cmux-fork}"
+APP_NAME="${APP_NAME:-cmux}"
 TARGET="/Applications/${APP_NAME}.app"
 SKIP_BUILD=0
+SKIP_DEPS=0
 DERIVED_DATA="${DERIVED_DATA:-$PROJECT_DIR/build/release}"
 SOURCE_APP="${SOURCE_APP:-$DERIVED_DATA/Build/Products/Release/cmux.app}"
+
+# Homebrew formulae the build needs at exact versions.
+BREW_FORMULAE=(zig@0.15)
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --skip-build) SKIP_BUILD=1; shift ;;
+    --skip-deps) SKIP_DEPS=1; shift ;;
     --target) TARGET="$2"; shift 2 ;;
     --source) SOURCE_APP="$2"; shift 2 ;;
     -h|--help)
@@ -58,25 +68,45 @@ done
 
 log() { printf '==> %s\n' "$*"; }
 
+# ---------- Homebrew + submodule preflight -----------------------------------
+if [[ "$SKIP_DEPS" == "0" ]]; then
+  if ! command -v brew >/dev/null 2>&1; then
+    echo "error: Homebrew not found on PATH. Install from https://brew.sh and re-run." >&2
+    exit 1
+  fi
+
+  for formula in "${BREW_FORMULAE[@]}"; do
+    if brew list --formula --versions "$formula" >/dev/null 2>&1; then
+      log "brew: $formula already installed"
+    else
+      log "brew install $formula"
+      brew install "$formula"
+    fi
+  done
+
+  if [[ -f "$PROJECT_DIR/.gitmodules" ]]; then
+    log "git submodule update --init --recursive"
+    git -C "$PROJECT_DIR" submodule update --init --recursive
+  fi
+fi
+
 # ---------- Prerequisites -----------------------------------------------------
 if [[ "$SKIP_BUILD" == "0" ]]; then
   if ! command -v xcodebuild >/dev/null 2>&1; then
     echo "error: xcodebuild not found. Install Xcode." >&2
     exit 1
   fi
-  if ! command -v zig >/dev/null 2>&1; then
-    if [[ -x /opt/homebrew/opt/zig@0.15/bin/zig ]]; then
-      export PATH="/opt/homebrew/opt/zig@0.15/bin:$PATH"
-      log "using zig at /opt/homebrew/opt/zig@0.15/bin"
-    else
-      echo "error: zig 0.15.x not found on PATH and not at /opt/homebrew/opt/zig@0.15/bin." >&2
-      echo "       brew install zig@0.15" >&2
-      exit 1
-    fi
-  fi
   zig_version="$(zig version 2>/dev/null || true)"
   if [[ "$zig_version" != 0.15.* ]]; then
-    echo "error: zig version mismatch (have $zig_version, need 0.15.x)." >&2
+    if [[ -x /opt/homebrew/opt/zig@0.15/bin/zig ]]; then
+      export PATH="/opt/homebrew/opt/zig@0.15/bin:$PATH"
+      zig_version="$(zig version 2>/dev/null || true)"
+      log "using zig at /opt/homebrew/opt/zig@0.15/bin ($zig_version)"
+    fi
+  fi
+  if [[ "$zig_version" != 0.15.* ]]; then
+    echo "error: zig 0.15.x required (have ${zig_version:-none})." >&2
+    echo "       brew install zig@0.15" >&2
     exit 1
   fi
 fi
@@ -126,10 +156,29 @@ else
 fi
 
 # ---------- Sign + unquarantine ---------------------------------------------
+# `codesign --deep` rejects bundles carrying com.apple.FinderInfo or resource
+# forks ("resource fork, Finder information, or similar detritus not allowed").
+# Strip xattrs first, then sign nested code (Frameworks/, PlugIns/) depth-first
+# so the outer bundle's resource manifest sees signed nested binaries.
+log "stripping extended attributes from $TARGET"
+xattr -cr "$TARGET" 2>/dev/null || true
+
+log "ad-hoc codesigning nested bundles"
+while IFS= read -r nested; do
+  codesign --force --sign - "$nested" >/dev/null 2>&1 || true
+done < <(find "$TARGET/Contents/Frameworks" "$TARGET/Contents/PlugIns" \
+  -mindepth 1 -maxdepth 4 -type d \
+  \( -name "*.framework" -o -name "*.appex" -o -name "*.app" -o -name "*.bundle" \) \
+  2>/dev/null | sort -r)
+
 log "ad-hoc codesigning $TARGET"
 codesign --force --deep --sign - "$TARGET" >/dev/null 2>&1 || {
   echo "warning: codesign failed; the app may not launch on a hardened-runtime system" >&2
 }
+
+if ! codesign --verify --deep "$TARGET" >/dev/null 2>&1; then
+  echo "warning: codesign --verify failed for $TARGET" >&2
+fi
 
 log "removing com.apple.quarantine attribute"
 xattr -dr com.apple.quarantine "$TARGET" 2>/dev/null || true

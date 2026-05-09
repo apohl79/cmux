@@ -3951,6 +3951,22 @@ class GhosttyApp {
                 }
                 return true
             }
+        case GHOSTTY_ACTION_MOUSE_OVER_LINK:
+            let overLink = action.action.mouse_over_link
+            let resolvedURL: URL?
+            if let cstr = overLink.url, overLink.len > 0 {
+                let urlString = String(
+                    data: Data(bytes: cstr, count: Int(overLink.len)),
+                    encoding: .utf8
+                ) ?? ""
+                resolvedURL = urlString.isEmpty ? nil : URL(string: urlString)
+            } else {
+                resolvedURL = nil
+            }
+            return performOnMain {
+                surfaceView.lastHoveredLinkURL = resolvedURL
+                return true
+            }
         default:
             return false
         }
@@ -6486,6 +6502,14 @@ class GhosttyNSView: NSView, NSUserInterfaceValidations {
         terminalSurface?.surface
     }
 
+    // Tracks the URL Ghostty most recently reported as being under the cursor.
+    // Updated by the GHOSTTY_ACTION_MOUSE_OVER_LINK handler. Used by the
+    // right-click menu to offer "Open Link in Default Browser" when a link
+    // overlaps the right-click position. The right-click probe in menu(for:)
+    // synthesises a Cmd-held mouse-pos event to force Ghostty's link detector
+    // to populate this synchronously.
+    fileprivate var lastHoveredLinkURL: URL?
+
     private func applySurfaceColorScheme(force: Bool = false) {
         guard let surface else { return }
         let bestMatch = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua])
@@ -8711,17 +8735,15 @@ class GhosttyNSView: NSView, NSUserInterfaceValidations {
 
     override func rightMouseDown(with event: NSEvent) {
         guard let surface = surface else { return }
-        if !ghostty_surface_mouse_captured(surface) {
-            requestPointerFocusRecovery()
-            super.rightMouseDown(with: event)
-            return
-        }
-
         requestPointerFocusRecovery()
-        window?.makeFirstResponder(self)
-        let point = convert(event.locationInWindow, from: nil)
-        ghostty_surface_mouse_pos(surface, point.x, bounds.height - point.y, modsFromEvent(event))
-        _ = ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_PRESS, GHOSTTY_MOUSE_RIGHT, modsFromEvent(event))
+
+        // Always invoke super so NSView's default right-click handling
+        // calls menu(for:) and shows the context menu — including in
+        // mouse-tracking panes (Claude Code, lazygit, …) where the menu
+        // would otherwise be suppressed. menu(for:) itself forwards the
+        // right-mouse-press to Ghostty so terminals that report mouse
+        // events still receive it.
+        super.rightMouseDown(with: event)
     }
 
     override func rightMouseUp(with event: NSEvent) {
@@ -8758,16 +8780,63 @@ class GhosttyNSView: NSView, NSUserInterfaceValidations {
 
     override func menu(for event: NSEvent) -> NSMenu? {
         guard let surface = surface else { return nil }
-        if ghostty_surface_mouse_captured(surface) {
-            return nil
-        }
 
         window?.makeFirstResponder(self)
         let point = convert(event.locationInWindow, from: nil)
-        ghostty_surface_mouse_pos(surface, point.x, bounds.height - point.y, modsFromEvent(event))
-        _ = ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_PRESS, GHOSTTY_MOUSE_RIGHT, modsFromEvent(event))
+        let realMods = modsFromEvent(event)
+        let mouseCaptured = ghostty_surface_mouse_captured(surface)
+
+        // URL detection at click position. Two sources:
+        //  1. Ghostty's own link detector via a synthetic Cmd-held mouse-pos
+        //     probe. Works for normal panes where mouse tracking is off.
+        //     With mouse tracking on (e.g. Claude Code), Ghostty gates link
+        //     refresh behind shift+!shift_capture, so this probe is silent.
+        //  2. cmux-side detection: read the row's text via Ghostty's read
+        //     APIs and run NSDataDetector. Always works regardless of mouse
+        //     capture, but slightly fuzzier on the click column for Unicode
+        //     lines.
+        var probedURL: URL?
+        if !mouseCaptured {
+            // Probe for a link at the click position. Ghostty's link
+            // detector requires modifiers to equal the link's hover_mods
+            // exactly (default Cmd on macOS), so we must use *only* Cmd
+            // here even if the user is holding other modifiers.
+            //
+            // cursorPosCallback skips its link refresh when the cursor
+            // hasn't moved since the last call AND was not previously over
+            // a link. Sending a negative position first clears Ghostty's
+            // cached link_point so the follow-up probe re-runs detection.
+            let probeMods = ghostty_input_mods_e(rawValue: GHOSTTY_MODS_SUPER.rawValue)
+            lastHoveredLinkURL = nil
+            ghostty_surface_mouse_pos(surface, -1, -1, probeMods)
+            ghostty_surface_mouse_pos(surface, point.x, bounds.height - point.y, probeMods)
+            probedURL = lastHoveredLinkURL
+        }
+        if probedURL == nil {
+            probedURL = detectURLInLine(at: point, surface: surface)
+        }
+
+        ghostty_surface_mouse_pos(surface, point.x, bounds.height - point.y, realMods)
+        _ = ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_PRESS, GHOSTTY_MOUSE_RIGHT, realMods)
 
         let menu = NSMenu()
+        if let url = probedURL {
+            let openExternalItem = menu.addItem(
+                withTitle: String(
+                    localized: "terminalContextMenu.openLinkInDefaultBrowser",
+                    defaultValue: "Open Link in Default Browser"
+                ),
+                action: #selector(openHoveredLinkInDefaultBrowser(_:)),
+                keyEquivalent: ""
+            )
+            openExternalItem.target = self
+            openExternalItem.representedObject = url
+            openExternalItem.image = NSImage(
+                systemSymbolName: "arrow.up.right.square",
+                accessibilityDescription: nil
+            )
+            menu.addItem(.separator())
+        }
         if onTriggerFlash != nil {
             let flashItem = menu.addItem(
                 withTitle: String(localized: "terminalContextMenu.triggerFlash", defaultValue: "Trigger Flash"),
@@ -8874,6 +8943,95 @@ class GhosttyNSView: NSView, NSUserInterfaceValidations {
 
     @objc private func resetTerminal(_ sender: Any?) {
         _ = performBindingAction("reset")
+    }
+
+    @objc private func openHoveredLinkInDefaultBrowser(_ sender: Any?) {
+        guard let item = sender as? NSMenuItem,
+              let url = item.representedObject as? URL else { return }
+        NSWorkspace.shared.open(url)
+    }
+
+    // Read the row of terminal text at the right-click pixel position,
+    // run NSDataDetector over it, and return the URL whose match range
+    // covers the click column. Used as a fallback for the right-click
+    // context menu in mouse-tracking panes (Claude Code, lazygit, …)
+    // where Ghostty's own link detector is gated off and the synthetic
+    // mouse-pos probe never fires MOUSE_OVER_LINK.
+    //
+    // Cell-column → string-character mapping is approximate for non-ASCII
+    // lines. URLs themselves are ASCII, so the only fuzziness is the click
+    // column when Unicode characters precede the URL on the same row. As a
+    // safety net we also accept the sole URL on the row when the
+    // column-based check misses.
+    private func detectURLInLine(at point: NSPoint, surface: ghostty_surface_t) -> URL? {
+        let size = ghostty_surface_size(surface)
+        let rows = max(Int(size.rows), 1)
+        let cols = max(Int(size.columns), 1)
+        // ghostty_surface_size and the GHOSTTY_ACTION_CELL_SIZE action both
+        // report cell dims in physical pixels, but `bounds` is in points.
+        // Deriving cell dims from `bounds / rows-cols` keeps everything in
+        // the same point units as the click position.
+        let resolvedCellWidth: CGFloat = bounds.width / CGFloat(cols)
+        let resolvedCellHeight: CGFloat = bounds.height / CGFloat(rows)
+        guard resolvedCellWidth > 0, resolvedCellHeight > 0 else { return nil }
+
+        let yFromTop = bounds.height - point.y
+        let row = max(0, min(rows - 1, Int(yFromTop / resolvedCellHeight)))
+        let col = max(0, min(cols - 1, Int(point.x / resolvedCellWidth)))
+
+        // Read the whole viewport with the proven TOP_LEFT/BOTTOM_RIGHT
+        // form (matches cmux's TerminalController.readSelectionText pattern).
+        // A single-row EXACT selection was observed to return empty text in
+        // mouse-tracking panes, so split the viewport by newline and index.
+        let topLeft = ghostty_point_s(
+            tag: GHOSTTY_POINT_VIEWPORT,
+            coord: GHOSTTY_POINT_COORD_TOP_LEFT,
+            x: 0, y: 0
+        )
+        let bottomRight = ghostty_point_s(
+            tag: GHOSTTY_POINT_VIEWPORT,
+            coord: GHOSTTY_POINT_COORD_BOTTOM_RIGHT,
+            x: 0, y: 0
+        )
+        let selection = ghostty_selection_s(
+            top_left: topLeft,
+            bottom_right: bottomRight,
+            rectangle: false
+        )
+
+        var text = ghostty_text_s()
+        guard ghostty_surface_read_text(surface, selection, &text) else { return nil }
+        defer { ghostty_surface_free_text(surface, &text) }
+
+        guard let ptr = text.text, text.text_len > 0 else { return nil }
+        let rawData = Data(bytes: ptr, count: Int(text.text_len))
+        let viewport = String(decoding: rawData, as: UTF8.self)
+        let lines = viewport.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        guard row < lines.count else { return nil }
+        let lineString = lines[row]
+        guard !lineString.isEmpty else { return nil }
+
+        guard let detector = try? NSDataDetector(
+            types: NSTextCheckingResult.CheckingType.link.rawValue
+        ) else { return nil }
+
+        let nsline = lineString as NSString
+        let matches = detector.matches(
+            in: lineString,
+            options: [],
+            range: NSRange(location: 0, length: nsline.length)
+        )
+        guard !matches.isEmpty else { return nil }
+
+        for match in matches {
+            if NSLocationInRange(col, match.range), let url = match.url {
+                return url
+            }
+        }
+        if matches.count == 1, let url = matches[0].url {
+            return url
+        }
+        return nil
     }
 
     override func mouseMoved(with event: NSEvent) {

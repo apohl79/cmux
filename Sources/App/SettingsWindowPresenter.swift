@@ -16,6 +16,16 @@ enum SettingsWindowPresenter {
     private static var pendingNavigationTarget: SettingsNavigationTarget?
     private static var shouldOpenWhenConfigured = false
 
+    // NSColorPanel + child-window AppKit bug workaround. When Settings is added
+    // as a child window of the main app window, macOS does not route mouse
+    // events into the shared NSColorPanel (the color wheel/sliders/eyedropper
+    // become unresponsive). We watch the shared color panel and temporarily
+    // detach Settings from its parent while the panel is visible, then
+    // re-attach when it closes.
+    private static var colorPanelDidBecomeKeyObserver: NSObjectProtocol?
+    private static var colorPanelWillCloseObserver: NSObjectProtocol?
+    private static weak var colorPanelStashedParent: NSWindow?
+
     static func configure(
         openWindow: @escaping @MainActor () -> Void,
         parentWindowProvider: @escaping @MainActor () -> NSWindow? = { nil }
@@ -39,6 +49,7 @@ enum SettingsWindowPresenter {
         window.contentMinSize = minimumSize
         clampToVisibleAreaIfNeeded(window)
         attachToPreferredParent(window)
+        installColorPanelChildWindowWorkaround()
     }
 
     static func show(navigationTarget: SettingsNavigationTarget? = nil) {
@@ -180,6 +191,64 @@ enum SettingsWindowPresenter {
             window.deminiaturize(nil)
         }
         window.orderFront(nil)
+    }
+
+    private static func installColorPanelChildWindowWorkaround() {
+        if colorPanelDidBecomeKeyObserver == nil {
+            colorPanelDidBecomeKeyObserver = NotificationCenter.default.addObserver(
+                forName: NSWindow.didBecomeKeyNotification,
+                object: nil,
+                queue: .main
+            ) { notification in
+                guard let window = notification.object as? NSWindow,
+                      window === NSColorPanel.shared else { return }
+                MainActor.assumeIsolated {
+                    handleColorPanelDidBecomeKey()
+                }
+            }
+        }
+        if colorPanelWillCloseObserver == nil {
+            colorPanelWillCloseObserver = NotificationCenter.default.addObserver(
+                forName: NSWindow.willCloseNotification,
+                object: nil,
+                queue: .main
+            ) { notification in
+                guard let window = notification.object as? NSWindow,
+                      window === NSColorPanel.shared else { return }
+                MainActor.assumeIsolated {
+                    handleColorPanelWillClose()
+                }
+            }
+        }
+
+        // Belt-and-braces: lift the panel above any sibling/child windows so
+        // it always renders on top regardless of Settings parenting.
+        let panel = NSColorPanel.shared
+        panel.becomesKeyOnlyIfNeeded = false
+        panel.worksWhenModal = true
+        panel.level = .modalPanel
+    }
+
+    private static func handleColorPanelDidBecomeKey() {
+        guard let window = settingsWindow else { return }
+        guard let parentWindow = window.parent else {
+            colorPanelStashedParent = nil
+            return
+        }
+        colorPanelStashedParent = parentWindow
+        parentWindow.removeChildWindow(window)
+    }
+
+    private static func handleColorPanelWillClose() {
+        guard let window = settingsWindow,
+              let parentWindow = colorPanelStashedParent else {
+            colorPanelStashedParent = nil
+            return
+        }
+        colorPanelStashedParent = nil
+        if window.parent !== parentWindow {
+            parentWindow.addChildWindow(window, ordered: .above)
+        }
     }
 
     private static func clampToVisibleAreaIfNeeded(_ window: NSWindow) {

@@ -20,6 +20,7 @@ extension CmuxSettingsFileStore {
         "app.commandPaletteSearchesAllSurfaces",
         "app.paneDividerColorLight",
         "app.paneDividerColorDark",
+        "app.paneDividerThickness",
         "terminal.showScrollBar",
         "terminal.autoResumeAgentSessions",
         "notifications.dockBadge",

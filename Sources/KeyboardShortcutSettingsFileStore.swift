@@ -389,6 +389,15 @@ final class CmuxSettingsFileStore {
             ) else { return }
             snapshot.managedUserDefaults[PaneDividerColorSettings.darkHexKey] = .nullableString(value)
         }
+        if let raw = section["paneDividerThickness"], !(raw is NSNull) {
+            if let value = jsonInt(raw),
+               CGFloat(value) >= PaneDividerThicknessSettings.minPoints,
+               CGFloat(value) <= PaneDividerThicknessSettings.maxPoints {
+                snapshot.managedUserDefaults[PaneDividerThicknessSettings.key] = .double(Double(value))
+            } else {
+                logInvalid("app.paneDividerThickness", sourcePath: sourcePath)
+            }
+        }
     }
 
     private func parseNotificationsSection(
@@ -1245,6 +1254,7 @@ final class CmuxSettingsFileStore {
                     "commandPaletteSearchesAllSurfaces": CommandPaletteSwitcherSearchSettings.defaultSearchAllSurfaces,
                     "paneDividerColorLight": NSNull(),
                     "paneDividerColorDark": NSNull(),
+                    "paneDividerThickness": Int(PaneDividerThicknessSettings.defaultPoints),
                 ],
             ],
             [

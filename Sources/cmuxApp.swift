@@ -5178,6 +5178,7 @@ struct SettingsView: View {
     @AppStorage("sidebarMatchTerminalBackground") private var sidebarMatchTerminalBackground = false
     @AppStorage(PaneDividerColorSettings.lightHexKey) private var paneDividerHexLight: String?
     @AppStorage(PaneDividerColorSettings.darkHexKey) private var paneDividerHexDark: String?
+    @AppStorage(PaneDividerThicknessSettings.key) private var paneDividerThicknessRaw: Double = Double(PaneDividerThicknessSettings.defaultPoints)
     @AppStorage(RightSidebarBetaFeatureSettings.feedEnabledKey)
     private var rightSidebarFeedEnabled = RightSidebarBetaFeatureSettings.defaultFeedEnabled
     @AppStorage(RightSidebarBetaFeatureSettings.dockEnabledKey)
@@ -5495,6 +5496,19 @@ struct SettingsView: View {
             },
             set: { newColor in
                 paneDividerHexLight = NSColor(newColor).hexString(includeAlpha: true)
+            }
+        )
+    }
+
+    private var paneDividerThicknessBinding: Binding<Int> {
+        Binding(
+            get: {
+                let clamped = PaneDividerThicknessSettings.clamp(CGFloat(paneDividerThicknessRaw))
+                return Int(clamped)
+            },
+            set: { newValue in
+                let clamped = PaneDividerThicknessSettings.clamp(CGFloat(newValue))
+                paneDividerThicknessRaw = Double(clamped)
             }
         )
     }
@@ -5887,6 +5901,25 @@ struct SettingsView: View {
                                     )
                                     .labelsHidden()
                                 }
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(
+                                        String(
+                                            localized: "settings.app.paneDividerColor.thickness",
+                                            defaultValue: "Width"
+                                        )
+                                    )
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                    Stepper(
+                                        value: paneDividerThicknessBinding,
+                                        in: Int(PaneDividerThicknessSettings.minPoints)...Int(PaneDividerThicknessSettings.maxPoints)
+                                    ) {
+                                        Text("\(Int(paneDividerThicknessRaw))pt")
+                                            .frame(minWidth: 36, alignment: .leading)
+                                            .monospacedDigit()
+                                    }
+                                    .controlSize(.small)
+                                }
                                 Button(
                                     String(
                                         localized: "settings.app.paneDividerColor.reset",
@@ -5895,9 +5928,14 @@ struct SettingsView: View {
                                 ) {
                                     paneDividerHexLight = nil
                                     paneDividerHexDark = nil
+                                    paneDividerThicknessRaw = Double(PaneDividerThicknessSettings.defaultPoints)
                                 }
                                 .controlSize(.small)
-                                .disabled(paneDividerHexLight == nil && paneDividerHexDark == nil)
+                                .disabled(
+                                    paneDividerHexLight == nil
+                                        && paneDividerHexDark == nil
+                                        && paneDividerThicknessRaw == Double(PaneDividerThicknessSettings.defaultPoints)
+                                )
                             }
                         }
 

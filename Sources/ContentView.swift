@@ -1960,6 +1960,7 @@ struct ContentView: View {
 
     @AppStorage("sidebarBlendMode") private var sidebarBlendMode = SidebarBlendModeOption.withinWindow.rawValue
     @AppStorage("sidebarMatchTerminalBackground") private var sidebarMatchTerminalBackground = false
+    @AppStorage(ChromeBarHeightSettings.key) private var chromeBarHeightRaw: Double = Double(ChromeBarHeightSettings.defaultPoints)
     @AppStorage("sidebarTintOpacity") private var sidebarTintOpacity = SidebarTintDefaults.opacity
     @AppStorage("sidebarTintHex") private var sidebarTintHex = SidebarTintDefaults.hex
     @AppStorage("sidebarTintHexLight") private var sidebarTintHexLight: String?
@@ -3039,6 +3040,16 @@ struct ContentView: View {
             guard sidebarState.isVisible,
                   sidebarBlendMode == SidebarBlendModeOption.withinWindow.rawValue else { return }
             schedulePortalGeometrySynchronize()
+        })
+
+        view = AnyView(view.onChange(of: chromeBarHeightRaw) { _, _ in
+            // chromeBarHeight feeds bonsplit's per-pane tabBarHeight via
+            // BonsplitConfiguration.Appearance, which is built once per
+            // chrome-apply call. Reapply chrome on change so the per-pane
+            // tab pills resize together with the sidebar/titlebar.
+            DispatchQueue.main.async {
+                tabManager.applyWindowBackdropModeForAllTabs(reason: "chromeBarHeightChanged")
+            }
         })
 
         view = AnyView(view.onChange(of: isMinimalMode) { _, _ in
@@ -16737,4 +16748,3 @@ enum SidebarPresetOption: String, CaseIterable, Identifiable {
         }
     }
 }
-

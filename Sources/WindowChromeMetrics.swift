@@ -29,10 +29,14 @@ enum RightSidebarChromeMetrics {
 }
 
 enum SidebarWorkspaceListMetrics {
-    static var firstRowTopOffset: CGFloat { MinimalModeChromeMetrics.titlebarHeight + 2 }
+    // Anchored to the pre-config default chrome bar height (28pt) so the
+    // sidebar list position doesn't track ChromeBarHeightSettings. Users
+    // resizing the chrome bar reported the sidebar drift as unwanted.
+    private static let titlebarOffsetAnchor: CGFloat = 28
+    static let firstRowTopOffset: CGFloat = titlebarOffsetAnchor + 2
     static let rowVerticalPadding: CGFloat = 8
-    static var topScrimHeight: CGFloat { firstRowTopOffset + 20 }
-    static var bottomScrimHeight: CGFloat { topScrimHeight }
+    static let topScrimHeight: CGFloat = firstRowTopOffset + 20
+    static let bottomScrimHeight: CGFloat = topScrimHeight
 
     static var scrollTopInset: CGFloat {
         max(0, firstRowTopOffset - rowVerticalPadding)

@@ -379,6 +379,13 @@
           "type": "boolean",
           "default": false,
           "description": "Search every surface in the command palette switcher instead of only the active workspace."
+        },
+        "chromeBarHeight": {
+          "type": "integer",
+          "minimum": 20,
+          "maximum": 50,
+          "default": 28,
+          "description": "Height in points of the shared chrome bar that backs the workspace tabs titlebar, the per-pane tab bar, and the secondary titlebar. Default 28 matches the previous hardcoded value."
         }
       }
     },

@@ -82,6 +82,7 @@ extension CmuxSettingsFileStore {
                     "hideTabCloseButton": AppCatalogSection().hideTabCloseButton.defaultValue,
                     "renameSelectsExistingName": AppCatalogSection().renameSelectsExistingName.defaultValue,
                     "commandPaletteSearchesAllSurfaces": AppCatalogSection().commandPaletteSearchesAllSurfaces.defaultValue,
+                    "chromeBarHeight": Int(ChromeBarHeightSettings.defaultPoints),
                 ],
             ],
             [

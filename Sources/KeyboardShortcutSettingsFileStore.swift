@@ -508,6 +508,15 @@ final class CmuxSettingsFileStore {
         if let value = jsonBool(section["commandPaletteSearchesAllSurfaces"]) {
             snapshot.managedUserDefaults[AppCatalogSection().commandPaletteSearchesAllSurfaces.userDefaultsKey] = .bool(value)
         }
+        if let raw = section["chromeBarHeight"], !(raw is NSNull) {
+            if let value = jsonInt(raw),
+               CGFloat(value) >= ChromeBarHeightSettings.minPoints,
+               CGFloat(value) <= ChromeBarHeightSettings.maxPoints {
+                snapshot.managedUserDefaults[ChromeBarHeightSettings.key] = .double(Double(value))
+            } else {
+                logInvalid("app.chromeBarHeight", sourcePath: sourcePath)
+            }
+        }
     }
 
     private func parseNotificationsSection(

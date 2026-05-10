@@ -7884,6 +7884,20 @@ class GhosttyNSView: NSView, NSUserInterfaceValidations {
         if flags.contains(.control) { mods |= GHOSTTY_MODS_CTRL.rawValue }
         if flags.contains(.option) { mods |= GHOSTTY_MODS_ALT.rawValue }
         if flags.contains(.command) { mods |= GHOSTTY_MODS_SUPER.rawValue }
+
+        // Side-aware bits via the device-dependent NX_DEVICE*KEYMASK flags
+        // carried in NSEvent.modifierFlags.rawValue. Without these, every
+        // Option (and other modifier) collapses to the side-less ALT bit
+        // and Ghostty's `macos-option-as-alt = left|right` config can't
+        // distinguish sides — the user loses the ability to keep one
+        // Option as Meta while letting the other compose. Mirrors the
+        // upstream Ghostty macOS app (Ghostty.Input.swift:64).
+        let raw = flags.rawValue
+        if raw & UInt(NX_DEVICERSHIFTKEYMASK) != 0 { mods |= GHOSTTY_MODS_SHIFT_RIGHT.rawValue }
+        if raw & UInt(NX_DEVICERCTLKEYMASK) != 0 { mods |= GHOSTTY_MODS_CTRL_RIGHT.rawValue }
+        if raw & UInt(NX_DEVICERALTKEYMASK) != 0 { mods |= GHOSTTY_MODS_ALT_RIGHT.rawValue }
+        if raw & UInt(NX_DEVICERCMDKEYMASK) != 0 { mods |= GHOSTTY_MODS_SUPER_RIGHT.rawValue }
+
         return ghostty_input_mods_e(rawValue: mods)
     }
 

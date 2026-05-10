@@ -15,6 +15,9 @@ public struct WorkspaceColorsSection: View {
     @State private var indicator: DefaultsValueModel<WorkspaceIndicatorStyle>
     @State private var selectionHex: DefaultsValueModel<String>
     @State private var badgeHex: DefaultsValueModel<String>
+    @State private var paneDividerLightHex: DefaultsValueModel<String>
+    @State private var paneDividerDarkHex: DefaultsValueModel<String>
+    @State private var paneDividerThickness: DefaultsValueModel<Double>
     @State private var paletteModel: DefaultsValueModel<[String: String]>
 
     /// Built-in palette order and default hexes. Mirrors
@@ -53,6 +56,9 @@ public struct WorkspaceColorsSection: View {
         _indicator = State(initialValue: DefaultsValueModel(store: defaultsStore, key: catalog.workspaceColors.indicatorStyle))
         _selectionHex = State(initialValue: DefaultsValueModel(store: defaultsStore, key: catalog.workspaceColors.selectionColorHex))
         _badgeHex = State(initialValue: DefaultsValueModel(store: defaultsStore, key: catalog.workspaceColors.notificationBadgeColorHex))
+        _paneDividerLightHex = State(initialValue: DefaultsValueModel(store: defaultsStore, key: catalog.app.paneDividerColorLightHex))
+        _paneDividerDarkHex = State(initialValue: DefaultsValueModel(store: defaultsStore, key: catalog.app.paneDividerColorDarkHex))
+        _paneDividerThickness = State(initialValue: DefaultsValueModel(store: defaultsStore, key: catalog.app.paneDividerThickness))
         _paletteModel = State(initialValue: DefaultsValueModel(store: defaultsStore, key: catalog.workspaceColors.palette))
     }
 
@@ -97,6 +103,8 @@ public struct WorkspaceColorsSection: View {
                 model: badgeHex
             )
             SettingsCardDivider()
+            paneDividerRow
+            SettingsCardDivider()
 
             SettingsCardNote(
                 String(localized: "settings.workspaceColors.dictionaryNote", defaultValue: "Edit cmux.json to add or remove named colors. \"Choose Custom Color...\" still adds local Custom N entries.")
@@ -129,6 +137,92 @@ public struct WorkspaceColorsSection: View {
                 .controlSize(.small)
             }
         }
+    }
+
+    private var paneDividerRow: some View {
+        SettingsCardRow(
+            configurationReview: .json(
+                "app.paneDividerColorLight",
+                "app.paneDividerColorDark",
+                "app.paneDividerThickness"
+            ),
+            String(localized: "settings.app.paneDividerColor", defaultValue: "Pane Divider Color"),
+            subtitle: String(localized: "settings.app.paneDividerColor.subtitle", defaultValue: "Override the color of dividers between panes. Leave at default to derive from the terminal background.")
+        ) {
+            HStack(spacing: 12) {
+                paneDividerColorPicker(
+                    title: String(localized: "settings.app.paneDividerColor.light", defaultValue: "Light"),
+                    model: paneDividerLightHex
+                )
+                paneDividerColorPicker(
+                    title: String(localized: "settings.app.paneDividerColor.dark", defaultValue: "Dark"),
+                    model: paneDividerDarkHex
+                )
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(String(localized: "settings.app.paneDividerColor.thickness", defaultValue: "Width"))
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    Stepper(
+                        value: Binding(
+                            get: { clampedPaneDividerThickness },
+                            set: { paneDividerThickness.set(clampPaneDividerThickness($0)) }
+                        ),
+                        in: 1...6,
+                        step: 1
+                    ) {
+                        Text("\(Int(clampedPaneDividerThickness))pt")
+                            .frame(minWidth: 36, alignment: .leading)
+                            .monospacedDigit()
+                    }
+                    .controlSize(.small)
+                }
+                Button(String(localized: "settings.app.paneDividerColor.reset", defaultValue: "Reset")) {
+                    paneDividerLightHex.reset()
+                    paneDividerDarkHex.reset()
+                    paneDividerThickness.reset()
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(
+                    paneDividerLightHex.current.isEmpty
+                        && paneDividerDarkHex.current.isEmpty
+                        && clampedPaneDividerThickness == 1
+                )
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func paneDividerColorPicker(title: String, model: DefaultsValueModel<String>) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.caption)
+                .foregroundColor(.secondary)
+            ColorPicker("", selection: Binding(
+                get: { paneDividerColor(hex: model.current) },
+                set: { newColor in model.set(newColor.cmuxHexString(includeAlpha: true)) }
+            ), supportsOpacity: true)
+            .labelsHidden()
+        }
+    }
+
+    private var clampedPaneDividerThickness: Double {
+        clampPaneDividerThickness(paneDividerThickness.current)
+    }
+
+    private func clampPaneDividerThickness(_ value: Double) -> Double {
+        min(max(value.rounded(), 1), 6)
+    }
+
+    private func paneDividerColor(hex: String) -> Color {
+        if let color = Color(cmuxHex: hex) {
+            return color
+        }
+        let opaqueSeparator = NSColor.separatorColor
+            .usingColorSpace(.sRGB)?
+            .withAlphaComponent(1.0)
+            ?? .separatorColor
+        return Color(nsColor: opaqueSeparator)
     }
 
     @ViewBuilder

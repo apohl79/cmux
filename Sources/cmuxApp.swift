@@ -5493,7 +5493,20 @@ struct SettingsView: View {
     private var paneDividerLightBinding: Binding<Color> {
         Binding(
             get: {
-                Color(nsColor: NSColor(hex: paneDividerHexLight ?? "") ?? .separatorColor)
+                if let hex = paneDividerHexLight, let parsed = NSColor(hex: hex) {
+                    return Color(nsColor: parsed)
+                }
+                // Unset: render the picker swatch as the system separator
+                // color forced to alpha=1.0. .separatorColor is translucent
+                // and renders as a checkerboard in the small picker swatch,
+                // which made the unset Light picker look different from a
+                // set Dark picker. The actual pane divider rendering still
+                // uses the dynamic translucent .separatorColor.
+                let opaque = NSColor.separatorColor
+                    .usingColorSpace(.sRGB)?
+                    .withAlphaComponent(1.0)
+                    ?? .separatorColor
+                return Color(nsColor: opaque)
             },
             set: { newColor in
                 paneDividerHexLight = NSColor(newColor).hexString(includeAlpha: true)
@@ -5517,7 +5530,15 @@ struct SettingsView: View {
     private var paneDividerDarkBinding: Binding<Color> {
         Binding(
             get: {
-                Color(nsColor: NSColor(hex: paneDividerHexDark ?? "") ?? .separatorColor)
+                if let hex = paneDividerHexDark, let parsed = NSColor(hex: hex) {
+                    return Color(nsColor: parsed)
+                }
+                // Unset: see paneDividerLightBinding for rationale.
+                let opaque = NSColor.separatorColor
+                    .usingColorSpace(.sRGB)?
+                    .withAlphaComponent(1.0)
+                    ?? .separatorColor
+                return Color(nsColor: opaque)
             },
             set: { newColor in
                 paneDividerHexDark = NSColor(newColor).hexString(includeAlpha: true)
@@ -5871,90 +5892,6 @@ struct SettingsView: View {
                         SettingsCardDivider()
 
                         SettingsCardRow(
-                            configurationReview: .json("app.paneDividerColorLight"),
-                            String(
-                                localized: "settings.app.paneDividerColor",
-                                defaultValue: "Pane Divider Color"
-                            ),
-                            subtitle: String(
-                                localized: "settings.app.paneDividerColor.subtitle",
-                                defaultValue: "Override the color of dividers between panes. Leave at default to derive from the terminal background."
-                            )
-                        ) {
-                            HStack(spacing: 12) {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(
-                                        String(
-                                            localized: "settings.app.paneDividerColor.light",
-                                            defaultValue: "Light"
-                                        )
-                                    )
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                                    ColorPicker(
-                                        "",
-                                        selection: paneDividerLightBinding,
-                                        supportsOpacity: true
-                                    )
-                                    .labelsHidden()
-                                }
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(
-                                        String(
-                                            localized: "settings.app.paneDividerColor.dark",
-                                            defaultValue: "Dark"
-                                        )
-                                    )
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                                    ColorPicker(
-                                        "",
-                                        selection: paneDividerDarkBinding,
-                                        supportsOpacity: true
-                                    )
-                                    .labelsHidden()
-                                }
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(
-                                        String(
-                                            localized: "settings.app.paneDividerColor.thickness",
-                                            defaultValue: "Width"
-                                        )
-                                    )
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                                    Stepper(
-                                        value: paneDividerThicknessBinding,
-                                        in: Int(PaneDividerThicknessSettings.minPoints)...Int(PaneDividerThicknessSettings.maxPoints)
-                                    ) {
-                                        Text("\(Int(paneDividerThicknessRaw))pt")
-                                            .frame(minWidth: 36, alignment: .leading)
-                                            .monospacedDigit()
-                                    }
-                                    .controlSize(.small)
-                                }
-                                Button(
-                                    String(
-                                        localized: "settings.app.paneDividerColor.reset",
-                                        defaultValue: "Reset"
-                                    )
-                                ) {
-                                    paneDividerHexLight = nil
-                                    paneDividerHexDark = nil
-                                    paneDividerThicknessRaw = Double(PaneDividerThicknessSettings.defaultPoints)
-                                }
-                                .controlSize(.small)
-                                .disabled(
-                                    paneDividerHexLight == nil
-                                        && paneDividerHexDark == nil
-                                        && paneDividerThicknessRaw == Double(PaneDividerThicknessSettings.defaultPoints)
-                                )
-                            }
-                        }
-
-                        SettingsCardDivider()
-
-                        SettingsCardRow(
                             configurationReview: .json("app.chromeBarHeight"),
                             String(
                                 localized: "settings.app.chromeBarHeight",
@@ -5991,6 +5928,7 @@ struct SettingsView: View {
                         }
 
                         SettingsCardDivider()
+
 
                         SettingsPickerRow(
                             configurationReview: .json("app.newWorkspacePlacement"),
@@ -7303,6 +7241,90 @@ struct SettingsView: View {
                             }
                             .buttonStyle(.bordered)
                             .controlSize(.small)
+                        }
+
+                        SettingsCardDivider()
+
+                        SettingsCardRow(
+                            configurationReview: .json("app.paneDividerColorLight"),
+                            String(
+                                localized: "settings.app.paneDividerColor",
+                                defaultValue: "Pane Divider Color"
+                            ),
+                            subtitle: String(
+                                localized: "settings.app.paneDividerColor.subtitle",
+                                defaultValue: "Override the color of dividers between panes. Leave at default to derive from the terminal background."
+                            )
+                        ) {
+                            HStack(spacing: 12) {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(
+                                        String(
+                                            localized: "settings.app.paneDividerColor.light",
+                                            defaultValue: "Light"
+                                        )
+                                    )
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                    ColorPicker(
+                                        "",
+                                        selection: paneDividerLightBinding,
+                                        supportsOpacity: true
+                                    )
+                                    .labelsHidden()
+                                }
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(
+                                        String(
+                                            localized: "settings.app.paneDividerColor.dark",
+                                            defaultValue: "Dark"
+                                        )
+                                    )
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                    ColorPicker(
+                                        "",
+                                        selection: paneDividerDarkBinding,
+                                        supportsOpacity: true
+                                    )
+                                    .labelsHidden()
+                                }
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(
+                                        String(
+                                            localized: "settings.app.paneDividerColor.thickness",
+                                            defaultValue: "Width"
+                                        )
+                                    )
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                    Stepper(
+                                        value: paneDividerThicknessBinding,
+                                        in: Int(PaneDividerThicknessSettings.minPoints)...Int(PaneDividerThicknessSettings.maxPoints)
+                                    ) {
+                                        Text("\(Int(paneDividerThicknessRaw))pt")
+                                            .frame(minWidth: 36, alignment: .leading)
+                                            .monospacedDigit()
+                                    }
+                                    .controlSize(.small)
+                                }
+                                Button(
+                                    String(
+                                        localized: "settings.app.paneDividerColor.reset",
+                                        defaultValue: "Reset"
+                                    )
+                                ) {
+                                    paneDividerHexLight = nil
+                                    paneDividerHexDark = nil
+                                    paneDividerThicknessRaw = Double(PaneDividerThicknessSettings.defaultPoints)
+                                }
+                                .controlSize(.small)
+                                .disabled(
+                                    paneDividerHexLight == nil
+                                        && paneDividerHexDark == nil
+                                        && paneDividerThicknessRaw == Double(PaneDividerThicknessSettings.defaultPoints)
+                                )
+                            }
                         }
                     }
 

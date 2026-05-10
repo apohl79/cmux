@@ -301,6 +301,13 @@
           "maximum": 6,
           "default": 1,
           "description": "Thickness in points of the divider drawn between panes. Default 1 matches the system thin style."
+        },
+        "chromeBarHeight": {
+          "type": "integer",
+          "minimum": 20,
+          "maximum": 50,
+          "default": 28,
+          "description": "Height in points of the shared chrome bar that backs the workspace tabs titlebar, the per-pane tab bar, and the secondary titlebar. Default 28 matches the previous hardcoded value."
         }
       }
     },

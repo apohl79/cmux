@@ -5179,6 +5179,7 @@ struct SettingsView: View {
     @AppStorage(PaneDividerColorSettings.lightHexKey) private var paneDividerHexLight: String?
     @AppStorage(PaneDividerColorSettings.darkHexKey) private var paneDividerHexDark: String?
     @AppStorage(PaneDividerThicknessSettings.key) private var paneDividerThicknessRaw: Double = Double(PaneDividerThicknessSettings.defaultPoints)
+    @AppStorage(ChromeBarHeightSettings.key) private var chromeBarHeightRaw: Double = Double(ChromeBarHeightSettings.defaultPoints)
     @AppStorage(RightSidebarBetaFeatureSettings.feedEnabledKey)
     private var rightSidebarFeedEnabled = RightSidebarBetaFeatureSettings.defaultFeedEnabled
     @AppStorage(RightSidebarBetaFeatureSettings.dockEnabledKey)
@@ -5520,6 +5521,18 @@ struct SettingsView: View {
             },
             set: { newColor in
                 paneDividerHexDark = NSColor(newColor).hexString(includeAlpha: true)
+            }
+        )
+    }
+
+    private var chromeBarHeightBinding: Binding<Int> {
+        Binding(
+            get: {
+                Int(ChromeBarHeightSettings.clamp(CGFloat(chromeBarHeightRaw)))
+            },
+            set: { newValue in
+                let clamped = ChromeBarHeightSettings.clamp(CGFloat(newValue))
+                chromeBarHeightRaw = Double(clamped)
             }
         )
     }
@@ -5935,6 +5948,44 @@ struct SettingsView: View {
                                     paneDividerHexLight == nil
                                         && paneDividerHexDark == nil
                                         && paneDividerThicknessRaw == Double(PaneDividerThicknessSettings.defaultPoints)
+                                )
+                            }
+                        }
+
+                        SettingsCardDivider()
+
+                        SettingsCardRow(
+                            configurationReview: .json("app.chromeBarHeight"),
+                            String(
+                                localized: "settings.app.chromeBarHeight",
+                                defaultValue: "Chrome Bar Height"
+                            ),
+                            subtitle: String(
+                                localized: "settings.app.chromeBarHeight.subtitle",
+                                defaultValue: "Height in points of the workspace tabs titlebar, the per-pane tab bar, and the secondary titlebar."
+                            )
+                        ) {
+                            HStack(spacing: 12) {
+                                Stepper(
+                                    value: chromeBarHeightBinding,
+                                    in: Int(ChromeBarHeightSettings.minPoints)...Int(ChromeBarHeightSettings.maxPoints)
+                                ) {
+                                    Text("\(Int(chromeBarHeightRaw))pt")
+                                        .frame(minWidth: 44, alignment: .leading)
+                                        .monospacedDigit()
+                                }
+                                .controlSize(.small)
+                                Button(
+                                    String(
+                                        localized: "settings.app.chromeBarHeight.reset",
+                                        defaultValue: "Reset"
+                                    )
+                                ) {
+                                    chromeBarHeightRaw = Double(ChromeBarHeightSettings.defaultPoints)
+                                }
+                                .controlSize(.small)
+                                .disabled(
+                                    Int(chromeBarHeightRaw) == Int(ChromeBarHeightSettings.defaultPoints)
                                 )
                             }
                         }

@@ -21,6 +21,7 @@ extension CmuxSettingsFileStore {
         "app.paneDividerColorLight",
         "app.paneDividerColorDark",
         "app.paneDividerThickness",
+        "app.chromeBarHeight",
         "terminal.showScrollBar",
         "terminal.autoResumeAgentSessions",
         "notifications.dockBadge",

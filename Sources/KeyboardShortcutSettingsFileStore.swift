@@ -398,6 +398,15 @@ final class CmuxSettingsFileStore {
                 logInvalid("app.paneDividerThickness", sourcePath: sourcePath)
             }
         }
+        if let raw = section["chromeBarHeight"], !(raw is NSNull) {
+            if let value = jsonInt(raw),
+               CGFloat(value) >= ChromeBarHeightSettings.minPoints,
+               CGFloat(value) <= ChromeBarHeightSettings.maxPoints {
+                snapshot.managedUserDefaults[ChromeBarHeightSettings.key] = .double(Double(value))
+            } else {
+                logInvalid("app.chromeBarHeight", sourcePath: sourcePath)
+            }
+        }
     }
 
     private func parseNotificationsSection(
@@ -1255,6 +1264,7 @@ final class CmuxSettingsFileStore {
                     "paneDividerColorLight": NSNull(),
                     "paneDividerColorDark": NSNull(),
                     "paneDividerThickness": Int(PaneDividerThicknessSettings.defaultPoints),
+                    "chromeBarHeight": Int(ChromeBarHeightSettings.defaultPoints),
                 ],
             ],
             [

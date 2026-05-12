@@ -213,6 +213,7 @@
 		A5001226 /* SocketControlSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5001225 /* SocketControlSettings.swift */; };
 		A5001230 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = A5001231 /* Sparkle */; };
 		A5001240 /* WindowDecorationsController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5001241 /* WindowDecorationsController.swift */; };
+		BABEDEC0BABEDEC0BABE0001 /* TrafficLightHoverRevealController.swift in Sources */ = {isa = PBXBuildFile; fileRef = BABEDEC0BABEDEC0BABE0002 /* TrafficLightHoverRevealController.swift */; };
 		A5001250 /* Sentry in Frameworks */ = {isa = PBXBuildFile; productRef = A5001251 /* Sentry */; };
 		A5001270 /* PostHog in Frameworks */ = {isa = PBXBuildFile; productRef = A5001271 /* PostHog */; };
 		A5001290 /* MarkdownUI in Frameworks */ = {isa = PBXBuildFile; productRef = A5001291 /* MarkdownUI */; };
@@ -696,6 +697,7 @@
 		A5001224 /* UpdateTestURLProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Update/UpdateTestURLProtocol.swift; sourceTree = "<group>"; };
 		A5001225 /* SocketControlSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SocketControlSettings.swift; sourceTree = "<group>"; };
 		A5001241 /* WindowDecorationsController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowDecorationsController.swift; sourceTree = "<group>"; };
+		BABEDEC0BABEDEC0BABE0002 /* TrafficLightHoverRevealController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrafficLightHoverRevealController.swift; sourceTree = "<group>"; };
 		A50012F0 /* Backport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Backport.swift; sourceTree = "<group>"; };
 		A50012F2 /* KeyboardShortcutSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardShortcutSettings.swift; sourceTree = "<group>"; };
 		C1713003C1713003C1713003 /* KeyboardShortcutSettingsLookup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardShortcutSettingsLookup.swift; sourceTree = "<group>"; };
@@ -1229,6 +1231,7 @@
 				C0DE3150A00000000000002 /* MinimalModeSidebarControls.swift */,
 				A5001219 /* WindowToolbarController.swift */,
 				A5001241 /* WindowDecorationsController.swift */,
+				BABEDEC0BABEDEC0BABE0002 /* TrafficLightHoverRevealController.swift */,
 				A5001222 /* WindowAccessor.swift */,
 				A5001611 /* SessionPersistence.swift */,
 				A5001671 /* SessionRestoredTerminalCommandStore.swift */,
@@ -1847,6 +1850,7 @@
 				C0DE3150A00000000000001 /* MinimalModeSidebarControls.swift in Sources */,
 				A5001209 /* WindowToolbarController.swift in Sources */,
 				A5001240 /* WindowDecorationsController.swift in Sources */,
+				BABEDEC0BABEDEC0BABE0001 /* TrafficLightHoverRevealController.swift in Sources */,
 				A500120C /* WindowAccessor.swift in Sources */,
 				A5001610 /* SessionPersistence.swift in Sources */,
 				A5001670 /* SessionRestoredTerminalCommandStore.swift in Sources */,

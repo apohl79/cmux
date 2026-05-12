@@ -10,6 +10,12 @@ final class WindowDecorationsController {
         keyOptions: .weakMemory,
         valueOptions: .strongMemory
     )
+    private lazy var trafficLightHoverReveal: TrafficLightHoverRevealController =
+        TrafficLightHoverRevealController { [weak self] window in
+            // Hover state changed in the reveal zone — re-evaluate so the
+            // standard window buttons toggle visibility immediately.
+            self?.apply(to: window)
+        }
 
     deinit {
         let center = NotificationCenter.default
@@ -23,6 +29,7 @@ final class WindowDecorationsController {
         while let view = enumerator?.nextObject() as? NSView {
             view.removeFromSuperview()
         }
+        trafficLightHoverReveal.uninstallAll()
         WindowMouseMovedEventsCoordinator.disableOwner(self)
     }
 
@@ -40,7 +47,15 @@ final class WindowDecorationsController {
         } else {
             WindowMouseMovedEventsCoordinator.disable(for: window, owner: self)
         }
+        let sidebarHiddenReveal = shouldEngageSidebarHiddenTrafficLightReveal(for: window)
+        if sidebarHiddenReveal {
+            trafficLightHoverReveal.install(in: window)
+        } else {
+            trafficLightHoverReveal.uninstall(from: window)
+        }
+        let isHovering = sidebarHiddenReveal && trafficLightHoverReveal.isHovering(in: window)
         let shouldHideButtons = shouldHideTrafficLights(for: window)
+            || (sidebarHiddenReveal && !isHovering)
         hideStandardButtons(on: window, hidden: shouldHideButtons)
         applyMinimalModeSidebarTitlebarClickTarget(to: window)
     }
@@ -443,5 +458,20 @@ final class WindowDecorationsController {
             return true
         }
         return false
+    }
+
+    private func shouldEngageSidebarHiddenTrafficLightReveal(for window: NSWindow) -> Bool {
+        guard isMainWorkspaceWindow(window) else { return false }
+        guard !window.styleMask.contains(.fullScreen) else { return false }
+        // Minimal mode owns its own traffic-light layout (sidebar-collapsed
+        // mini chrome already reserves an 80pt strip on the tab bar), so do
+        // not double-manage it here.
+        guard !WorkspacePresentationModeSettings.isMinimal() else { return false }
+        return MainActor.assumeIsolated {
+            guard let context = AppDelegate.shared?.contextForMainTerminalWindow(window) else {
+                return false
+            }
+            return context.sidebarState.isVisible == false
+        }
     }
 }

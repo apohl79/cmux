@@ -57,6 +57,12 @@ final class WindowDecorationsController {
         let shouldHideButtons = shouldHideTrafficLights(for: window)
             || (sidebarHiddenReveal && !isHovering)
         hideStandardButtons(on: window, hidden: shouldHideButtons)
+        #if DEBUG
+        cmuxDebugLog(
+            "tlhover.apply win=\(window.windowNumber) id=\(window.identifier?.rawValue ?? "nil") " +
+            "engageReveal=\(sidebarHiddenReveal) hovering=\(isHovering) hide=\(shouldHideButtons)"
+        )
+        #endif
         applyMinimalModeSidebarTitlebarClickTarget(to: window)
     }
 
@@ -461,17 +467,42 @@ final class WindowDecorationsController {
     }
 
     private func shouldEngageSidebarHiddenTrafficLightReveal(for window: NSWindow) -> Bool {
-        guard isMainWorkspaceWindow(window) else { return false }
-        guard !window.styleMask.contains(.fullScreen) else { return false }
+        let isMain = isMainWorkspaceWindow(window)
+        let isFullScreen = window.styleMask.contains(.fullScreen)
+        let isMinimal = WorkspacePresentationModeSettings.isMinimal()
+        guard isMain else {
+            #if DEBUG
+            cmuxDebugLog("tlhover.gate win=\(window.windowNumber) bail=notMain id=\(window.identifier?.rawValue ?? "nil")")
+            #endif
+            return false
+        }
+        guard !isFullScreen else {
+            #if DEBUG
+            cmuxDebugLog("tlhover.gate win=\(window.windowNumber) bail=fullScreen")
+            #endif
+            return false
+        }
         // Minimal mode owns its own traffic-light layout (sidebar-collapsed
         // mini chrome already reserves an 80pt strip on the tab bar), so do
         // not double-manage it here.
-        guard !WorkspacePresentationModeSettings.isMinimal() else { return false }
+        guard !isMinimal else {
+            #if DEBUG
+            cmuxDebugLog("tlhover.gate win=\(window.windowNumber) bail=minimal")
+            #endif
+            return false
+        }
         return MainActor.assumeIsolated {
             guard let context = AppDelegate.shared?.contextForMainTerminalWindow(window) else {
+                #if DEBUG
+                cmuxDebugLog("tlhover.gate win=\(window.windowNumber) bail=noContext")
+                #endif
                 return false
             }
-            return context.sidebarState.isVisible == false
+            let visible = context.sidebarState.isVisible
+            #if DEBUG
+            cmuxDebugLog("tlhover.gate win=\(window.windowNumber) sidebar.visible=\(visible)")
+            #endif
+            return visible == false
         }
     }
 }

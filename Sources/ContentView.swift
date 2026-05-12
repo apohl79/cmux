@@ -2289,7 +2289,18 @@ struct ContentView: View {
     }
 
     private func syncTrafficLightInset() {
-        let inset: CGFloat = (isMinimalMode && !sidebarState.isVisible && !isFullScreen) ? 80 : 0
+        let baseInset: CGFloat = (isMinimalMode && !sidebarState.isVisible && !isFullScreen) ? 80 : 0
+        // The hover-reveal hides the native NSWindow buttons while the sidebar
+        // is collapsed; release the reserved tab-bar inset in lockstep so the
+        // tabs reclaim the freed space.
+        let hiddenByReveal: Bool
+        if let observedWindow {
+            hiddenByReveal = AppDelegate.shared?
+                .trafficLightHoverRevealHidesButtons(in: observedWindow) == true
+        } else {
+            hiddenByReveal = false
+        }
+        let inset: CGFloat = hiddenByReveal ? 0 : baseInset
         tabManager.syncWorkspaceTabBarLeadingInset(inset)
     }
 

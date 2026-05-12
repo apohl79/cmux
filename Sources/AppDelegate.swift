@@ -10177,6 +10177,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         windowDecorationsController.apply(to: window)
     }
 
+    /// Returns `true` when the traffic-light hover-reveal is currently hiding
+    /// the standard window buttons in `window`. Consumers (e.g. minimal-mode
+    /// tab bar inset) use this to release the reserved 80pt strip while the
+    /// buttons are invisible and restore it on hover.
+    func trafficLightHoverRevealHidesButtons(in window: NSWindow) -> Bool {
+        windowDecorationsController.trafficLightsAreHiddenByReveal(for: window)
+    }
+
     func toggleNotificationsPopover(animated: Bool = true, anchorView: NSView? = nil) {
         titlebarAccessoryController.toggleNotificationsPopover(animated: animated, anchorView: anchorView)
     }

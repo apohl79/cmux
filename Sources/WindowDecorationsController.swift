@@ -489,7 +489,6 @@ final class WindowDecorationsController {
     private func shouldEngageSidebarHiddenTrafficLightReveal(for window: NSWindow) -> Bool {
         let isMain = isMainWorkspaceWindow(window)
         let isFullScreen = window.styleMask.contains(.fullScreen)
-        let isMinimal = WorkspacePresentationModeSettings.isMinimal()
         guard isMain else {
             #if DEBUG
             cmuxDebugLog("tlhover.gate win=\(window.windowNumber) bail=notMain id=\(window.identifier?.rawValue ?? "nil")")
@@ -502,15 +501,6 @@ final class WindowDecorationsController {
             #endif
             return false
         }
-        // Minimal mode owns its own traffic-light layout (sidebar-collapsed
-        // mini chrome already reserves an 80pt strip on the tab bar), so do
-        // not double-manage it here.
-        guard !isMinimal else {
-            #if DEBUG
-            cmuxDebugLog("tlhover.gate win=\(window.windowNumber) bail=minimal")
-            #endif
-            return false
-        }
         return MainActor.assumeIsolated {
             guard let context = AppDelegate.shared?.contextForMainTerminalWindow(window) else {
                 #if DEBUG
@@ -519,8 +509,11 @@ final class WindowDecorationsController {
                 return false
             }
             let visible = context.sidebarState.isVisible
+            let isMinimal = WorkspacePresentationModeSettings.isMinimal()
             #if DEBUG
-            cmuxDebugLog("tlhover.gate win=\(window.windowNumber) sidebar.visible=\(visible)")
+            cmuxDebugLog(
+                "tlhover.gate win=\(window.windowNumber) sidebar.visible=\(visible) minimal=\(isMinimal)"
+            )
             #endif
             return visible == false
         }

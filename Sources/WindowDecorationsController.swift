@@ -60,6 +60,11 @@ final class WindowDecorationsController {
             || (sidebarHiddenReveal && !isHovering)
         hideStandardButtons(on: window, hidden: shouldHideButtons)
         // Native traffic-light frames are AppKit-owned. cmux reads them for layout but never moves them.
+        syncMinimalModeTrafficLightTabBarInsetForReveal(
+            window: window,
+            sidebarHiddenReveal: sidebarHiddenReveal,
+            isHovering: isHovering
+        )
         #if DEBUG
         cmuxDebugLog(
             "tlhover.apply win=\(window.windowNumber) id=\(window.identifier?.rawValue ?? "nil") " +
@@ -67,6 +72,32 @@ final class WindowDecorationsController {
         )
         #endif
         applyMinimalModeSidebarTitlebarClickTarget(to: window)
+    }
+
+    /// In minimal mode with the sidebar collapsed, the tab bar normally
+    /// reserves a leading inset for the native traffic-light buttons
+    /// (see `ContentView.syncTrafficLightInset`). When the hover-reveal hides
+    /// those buttons we release the inset so tabs reflow into the freed space,
+    /// and restore the inset on hover so the revealed buttons don't overlap
+    /// any tab content.
+    private func syncMinimalModeTrafficLightTabBarInsetForReveal(
+        window: NSWindow,
+        sidebarHiddenReveal: Bool,
+        isHovering: Bool
+    ) {
+        guard sidebarHiddenReveal else { return }
+        guard WorkspacePresentationModeSettings.isMinimal() else { return }
+        guard !window.styleMask.contains(.fullScreen) else { return }
+        let desiredInset: CGFloat = isHovering
+            ? MinimalModeTitlebarDebugSettings.trafficLightTabBarLeadingInset()
+            : 0
+        MainActor.assumeIsolated {
+            guard let tabManager = AppDelegate.shared?
+                .contextForMainTerminalWindow(window)?
+                .tabManager
+            else { return }
+            tabManager.syncWorkspaceTabBarLeadingInset(desiredInset)
+        }
     }
 
     private func installObservers() {
@@ -484,6 +515,15 @@ final class WindowDecorationsController {
             return true
         }
         return false
+    }
+
+    /// True iff the hover-reveal is engaged for `window` AND the cursor is not
+    /// currently in the reveal zone — i.e. the standard NSWindow buttons are
+    /// hidden by this controller right now. Used by ContentView to release the
+    /// minimal-mode tab bar traffic-light inset in lockstep with the buttons.
+    func trafficLightsAreHiddenByReveal(for window: NSWindow) -> Bool {
+        let engaged = shouldEngageSidebarHiddenTrafficLightReveal(for: window)
+        return engaged && !trafficLightHoverReveal.isHovering(in: window)
     }
 
     private func shouldEngageSidebarHiddenTrafficLightReveal(for window: NSWindow) -> Bool {

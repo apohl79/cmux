@@ -103,6 +103,11 @@ final class WindowDecorationsController {
         }
         observers.append(center.addObserver(forName: NSWindow.didBecomeKeyNotification, object: nil, queue: .main, using: handler))
         observers.append(center.addObserver(forName: NSWindow.didBecomeMainNotification, object: nil, queue: .main, using: handler))
+        // Fullscreen transitions don't trigger key/main becomeXxx; re-evaluate
+        // explicitly so the hover-reveal re-engages after the user leaves
+        // fullscreen with the sidebar still collapsed.
+        observers.append(center.addObserver(forName: NSWindow.didExitFullScreenNotification, object: nil, queue: .main, using: handler))
+        observers.append(center.addObserver(forName: NSWindow.didEnterFullScreenNotification, object: nil, queue: .main, using: handler))
         observers.append(center.addObserver(forName: UserDefaults.didChangeNotification, object: nil, queue: .main) { [weak self] _ in
             self?.applyPresentationModeChangeIfNeeded()
         })

@@ -14,6 +14,7 @@ enum SettingsWindowPresenter {
     private static weak var observedSettingsWindow: NSWindow?
     private static var parentCloseObserver: NSObjectProtocol?
     private static var pendingNavigationTarget: SettingsNavigationTarget?
+    private static var pendingContentNavigationTarget: SettingsNavigationTarget?
     private static var shouldOpenWhenConfigured = false
 
     // NSColorPanel + child-window AppKit bug workaround. When Settings is added
@@ -50,20 +51,41 @@ enum SettingsWindowPresenter {
         clampToVisibleAreaIfNeeded(window)
         attachToPreferredParent(window)
         installColorPanelChildWindowWorkaround()
+        Task { @MainActor in
+            guard settingsWindow === window else { return }
+            focus(window)
+        }
     }
 
-    static func show(navigationTarget: SettingsNavigationTarget? = nil) {
+    static func show(
+        navigationTarget: SettingsNavigationTarget? = nil,
+        openWindowOverride: (@MainActor () -> Void)? = nil
+    ) {
 #if DEBUG
         cmuxDebugLog("settings.window.show path=swiftuiWindow")
+        _ = CmuxUITestCapture.mutateJSONObjectIfConfigured(
+            envKey: "CMUX_UI_TEST_SETTINGS_OPEN_CAPTURE_PATH"
+        ) { payload in
+            payload["opened"] = true
+            payload["target"] = navigationTarget?.rawValue ?? ""
+            payload["used_open_window_override"] = openWindowOverride != nil
+        }
 #endif
         pendingNavigationTarget = navigationTarget
+        pendingContentNavigationTarget = navigationTarget
 
         if let window = existingWindow() {
             pendingNavigationTarget = nil
+            pendingContentNavigationTarget = nil
             focus(window)
             if let navigationTarget {
                 SettingsNavigationRequest.post(navigationTarget)
             }
+            return
+        }
+
+        if let openWindowOverride {
+            openWindowOverride()
             return
         }
 
@@ -77,6 +99,12 @@ enum SettingsWindowPresenter {
     static func consumePendingNavigationTarget() -> SettingsNavigationTarget? {
         let target = pendingNavigationTarget
         pendingNavigationTarget = nil
+        return target
+    }
+
+    static func consumePendingContentNavigationTarget() -> SettingsNavigationTarget? {
+        let target = pendingContentNavigationTarget
+        pendingContentNavigationTarget = nil
         return target
     }
 
@@ -96,6 +124,7 @@ enum SettingsWindowPresenter {
         parentWindowProvider = nil
         settingsWindow = nil
         pendingNavigationTarget = nil
+        pendingContentNavigationTarget = nil
         shouldOpenWhenConfigured = false
     }
 #endif

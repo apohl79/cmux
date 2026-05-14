@@ -298,7 +298,7 @@
       "browserLinkBehavior": "سلوك روابط المتصفح",
       "browserLinkDesc": "في الإعدادات > المتصفح، يوفر cmux قائمتين من المضيفين بأغراض مختلفة:",
       "browserHostsEmbed": "المضيفون لفتحهم في المتصفح المدمج: ينطبق على الروابط المنقورة من مخرجات الطرفية. المضيفون في هذه القائمة يُفتحون في cmux؛ المضيفون الآخرون يُفتحون في متصفحك الافتراضي. يدعم مضيفاً واحداً أو حرف بدل لكل سطر (مثال: example.com، *.internal.example).",
-      "browserHostsHttp": "مضيفو HTTP المسموح بهم في المتصفح المدمج: ينطبق فقط على روابط HTTP (غير HTTPS). المضيفون في هذه القائمة يمكنهم الفتح في cmux بدون تحذير. الافتراضيات تشمل localhost و127.0.0.1 و::1 و0.0.0.0 و*.localtest.me.",
+      "browserHostsHttp": "مضيفو HTTP المسموح بهم في المتصفح المدمج: ينطبق فقط على روابط HTTP (غير HTTPS). المضيفون في هذه القائمة يمكنهم الفتح في cmux بدون تحذير. الافتراضيات تشمل localhost و*.localhost و127.0.0.1 و::1 و0.0.0.0 و*.localtest.me.",
       "exampleConfig": "مثال على الإعدادات",
       "metaTitle": "الإعدادات"
     },
@@ -602,7 +602,12 @@
       "nodejs": "Node.js",
       "tmuxPassthrough": "تمرير tmux",
       "tmuxDesc": "إذا كنت تستخدم tmux داخل cmux، فعّل التمرير:",
-      "metaTitle": "الإشعارات"
+      "metaTitle": "الإشعارات",
+      "hooksTitle": "خطافات الإشعارات",
+      "hooksIntro": "يمكن أن يعرّف <config>cmux.json</config> خطافات إشعارات تستقبل كل سياسة إشعار كـ JSON عبر stdin. يعيد كل خطاف JSON عبر stdout. تكون الخطافات متوقفة افتراضيًا؛ لا يشغّل cmux أي خطاف إلا عندما يحتوي <hooksMode>notifications.hooks</hooksMode> على خطاف مفعّل واحد على الأقل. يطبق cmux نص الإشعار والتأثيرات المعادة، لذلك يمكن للخطافات تصفية اللافتات، أو الاحتفاظ بسجل الشريط الجانبي أو تخطيه، أو تشغيل الأصوات، أو إيقاف الخطافات اللاحقة.",
+      "hooksJsonTitle": "cmux.json",
+      "hooksIOTitle": "إدخال وإخراج الخطاف",
+      "hooksDetails": "تُورث الخطافات من الملف العام <globalConfig>~/.config/cmux/cmux.json</globalConfig> وملفات المشروع <projectConfig>.cmux/cmux.json</projectConfig> من المجلدات الأصلية حتى مساحة العمل الحالية. تستخدم خطافات المشروع نفس مطالبة الثقة مثل أوامر المشروع الأخرى في <config>cmux.json</config> قبل تشغيلها. تمر لافتات موافقة Feed عبر هذه الخطافات أيضاً؛ يؤدي تعطيل <desktop>desktop</desktop> إلى منع اللافتة الأصلية مع إبقاء عنصر Feed متاحاً في cmux. اضبط <hooksMode>notifications.hooksMode</hooksMode> على <replace>replace</replace> في إعدادات المشروع لتجاهل الخطافات الموروثة. إذا فشل خطاف أو انتهت مهلته أو أعاد JSON غير صالح، يستخدم cmux سلوك الإشعارات الافتراضي ويعرض تنبيه فشل الخطاف."
     },
     "browserAutomation": {
       "title": "أتمتة المتصفح",

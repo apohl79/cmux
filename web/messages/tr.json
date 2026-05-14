@@ -298,7 +298,7 @@
       "browserLinkBehavior": "Tarayıcı bağlantı davranışı",
       "browserLinkDesc": "Ayarlar > Tarayıcı'da cmux, farklı amaçlara sahip iki ana bilgisayar listesi sunar:",
       "browserHostsEmbed": "Gömülü Tarayıcıda Açılacak Ana Bilgisayarlar: terminal çıktısından tıklanan bağlantılara uygulanır. Bu listedeki ana bilgisayarlar cmux'ta açılır; diğer ana bilgisayarlar varsayılan tarayıcınızda açılır. Satır başına bir ana bilgisayar veya joker karakter destekler (örneğin: example.com, *.internal.example).",
-      "browserHostsHttp": "Gömülü Tarayıcıda İzin Verilen HTTP Ana Bilgisayarları: yalnızca HTTP (HTTPS olmayan) URL'lere uygulanır. Bu listedeki ana bilgisayarlar cmux'ta uyarı istemeden açılabilir. Varsayılanlar localhost, 127.0.0.1, ::1, 0.0.0.0 ve *.localtest.me'yi içerir.",
+      "browserHostsHttp": "Gömülü Tarayıcıda İzin Verilen HTTP Ana Bilgisayarları: yalnızca HTTP (HTTPS olmayan) URL'lere uygulanır. Bu listedeki ana bilgisayarlar cmux'ta uyarı istemeden açılabilir. Varsayılanlar localhost, *.localhost, 127.0.0.1, ::1, 0.0.0.0 ve *.localtest.me'yi içerir.",
       "exampleConfig": "Örnek yapılandırma",
       "metaTitle": "Yapılandırma"
     },
@@ -602,7 +602,12 @@
       "nodejs": "Node.js",
       "tmuxPassthrough": "tmux passthrough",
       "tmuxDesc": "cmux içinde tmux kullanıyorsanız, passthrough'u etkinleştirin:",
-      "metaTitle": "Bildirimler"
+      "metaTitle": "Bildirimler",
+      "hooksTitle": "Bildirim hookları",
+      "hooksIntro": "<config>cmux.json</config>, her bildirim politikasını stdin üzerinden JSON olarak alan bildirim hookları tanımlayabilir. Her hook stdout üzerinden JSON döndürür. Hooklar varsayılan olarak kapalıdır; cmux bunları yalnızca <hooksMode>notifications.hooks</hooksMode> içinde en az bir etkin hook olduğunda çalıştırır. cmux dönen bildirim metnini ve etkileri uygular; böylece hooklar bannerları filtreleyebilir, kenar çubuğu geçmişini tutabilir veya atlayabilir, ses çalıştırabilir ya da sonraki hookları durdurabilir.",
+      "hooksJsonTitle": "cmux.json",
+      "hooksIOTitle": "Hook girişi ve çıkışı",
+      "hooksDetails": "Hooklar global <globalConfig>~/.config/cmux/cmux.json</globalConfig> dosyasından ve üst dizinlerden geçerli workspace’e kadar olan proje <projectConfig>.cmux/cmux.json</projectConfig> dosyalarından miras alınır. Proje hookları, çalışmadan önce diğer proje <config>cmux.json</config> komutlarıyla aynı güven istemini kullanır. Feed onay bannerları da bu hooklardan geçer; <desktop>desktop</desktop> devre dışı bırakılırsa yerel banner bastırılır ve Feed öğesi cmux içinde kullanılabilir kalır. Miras alınan hookları yok saymak için proje yapılandırmasında <hooksMode>notifications.hooksMode</hooksMode> değerini <replace>replace</replace> yapın. Bir hook başarısız olursa, zaman aşımına uğrarsa veya geçersiz JSON döndürürse cmux varsayılan bildirim davranışını kullanır ve hook hatası uyarısı gösterir."
     },
     "browserAutomation": {
       "title": "Tarayıcı Otomasyonu",

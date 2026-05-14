@@ -298,7 +298,7 @@
       "browserLinkBehavior": "浏览器链接行为",
       "browserLinkDesc": "在 Settings > Browser 中，cmux 提供两个用途不同的主机列表：",
       "browserHostsEmbed": "在内嵌浏览器中打开的主机：适用于从终端输出点击的链接。此列表中的主机在 cmux 中打开；其他主机在默认浏览器中打开。支持单个主机或通配符，每行一个（例如：example.com、*.internal.example）。",
-      "browserHostsHttp": "内嵌浏览器允许的 HTTP 主机：仅适用于 HTTP（非 HTTPS）URL。此列表中的主机可以在 cmux 中打开而不显示警告提示。默认包括 localhost、127.0.0.1、::1、0.0.0.0 和 *.localtest.me。",
+      "browserHostsHttp": "内嵌浏览器允许的 HTTP 主机：仅适用于 HTTP（非 HTTPS）URL。此列表中的主机可以在 cmux 中打开而不显示警告提示。默认包括 localhost、*.localhost、127.0.0.1、::1、0.0.0.0 和 *.localtest.me。",
       "exampleConfig": "配置示例",
       "metaTitle": "配置"
     },
@@ -602,7 +602,12 @@
       "nodejs": "Node.js",
       "tmuxPassthrough": "tmux 透传",
       "tmuxDesc": "如果在 cmux 内使用 tmux，启用透传：",
-      "metaTitle": "通知"
+      "metaTitle": "通知",
+      "hooksTitle": "通知钩子",
+      "hooksIntro": "<config>cmux.json</config> 可以定义通知钩子，让每条通知策略以 JSON 形式从 stdin 传入。每个钩子通过 stdout 返回 JSON。钩子默认关闭；只有当 <hooksMode>notifications.hooks</hooksMode> 包含至少一个已启用的钩子时，cmux 才会运行它们。cmux 会应用返回的通知文本和效果，因此钩子可以过滤横幅、保留或跳过侧边栏历史、播放声音，或停止后续钩子。",
+      "hooksJsonTitle": "cmux.json",
+      "hooksIOTitle": "钩子输入和输出",
+      "hooksDetails": "钩子会从全局 <globalConfig>~/.config/cmux/cmux.json</globalConfig> 以及从父目录到当前 workspace 的项目 <projectConfig>.cmux/cmux.json</projectConfig> 文件继承。项目钩子运行前会使用与其他项目 <config>cmux.json</config> 命令相同的信任提示。Feed 审批横幅也会经过这些钩子；禁用 <desktop>desktop</desktop> 会抑制原生横幅，同时在 cmux 中保留 Feed 项。若要忽略继承的钩子，请在项目配置中将 <hooksMode>notifications.hooksMode</hooksMode> 设为 <replace>replace</replace>。如果钩子失败、超时或返回无效 JSON，cmux 会使用默认通知行为并显示钩子失败提醒。"
     },
     "browserAutomation": {
       "title": "浏览器自动化",

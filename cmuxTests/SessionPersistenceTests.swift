@@ -661,6 +661,24 @@ final class SessionPersistenceTests: XCTestCase {
         XCTAssertNotEqual(firstFingerprint, secondFingerprint)
     }
 
+    func testRestorableAgentIndexSkipsHookRecordWithDeadRecordedPID() throws {
+        let workspaceId = UUID()
+        let panelId = UUID()
+        let index = try makeRestorableAgentIndex(
+            workspaceId: workspaceId,
+            panelId: panelId,
+            sessionId: "codex-dead-pid-session",
+            arguments: [
+                "/usr/local/bin/codex",
+                "--model",
+                "gpt-5.4",
+            ],
+            pid: Int(Int32.max)
+        )
+
+        XCTAssertNil(index.snapshot(workspaceId: workspaceId, panelId: panelId))
+    }
+
     func testResolvedWindowFramePrefersSavedDisplayIdentity() {
         let savedFrame = SessionRectSnapshot(x: 1_200, y: 100, width: 600, height: 400)
         let savedDisplay = SessionDisplaySnapshot(
@@ -1002,7 +1020,7 @@ final class SessionPersistenceTests: XCTestCase {
     }
 
     @MainActor
-    func testRestoredAgentFirstAutoResumeCommandDoesNotClearSnapshot() throws {
+    func testRestoredAgentAutoResumeClearsSnapshotWhenShellReturnsToPrompt() throws {
         let source = Workspace()
         let sourcePanelId = try XCTUnwrap(source.focusedPanelId)
         let sourceIndex = try makeRestorableAgentIndex(
@@ -1029,9 +1047,8 @@ final class SessionPersistenceTests: XCTestCase {
         XCTAssertEqual(autoResumeSnapshot.panels.first?.terminal?.agent?.sessionId, "codex-restored-session")
 
         restored.updatePanelShellActivityState(panelId: restoredPanelId, state: .promptIdle)
-        restored.updatePanelShellActivityState(panelId: restoredPanelId, state: .commandRunning)
-        let userCommandSnapshot = restored.sessionSnapshot(includeScrollback: false)
-        XCTAssertNil(userCommandSnapshot.panels.first?.terminal?.agent)
+        let exitedAgentSnapshot = restored.sessionSnapshot(includeScrollback: false)
+        XCTAssertNil(exitedAgentSnapshot.panels.first?.terminal?.agent)
     }
 
     @MainActor
@@ -1328,6 +1345,36 @@ final class SessionPersistenceTests: XCTestCase {
         )
     }
 
+    @MainActor
+    func testObservedRunningAgentInvalidatesWhenShellReturnsToPrompt() throws {
+        let workspace = Workspace()
+        let panelId = try XCTUnwrap(workspace.focusedPanelId)
+        workspace.updatePanelShellActivityState(panelId: panelId, state: .commandRunning)
+
+        let runningIndex = try makeRestorableAgentIndex(
+            workspaceId: workspace.id,
+            panelId: panelId,
+            sessionId: "codex-running-session",
+            arguments: [
+                "/usr/local/bin/codex",
+                "--model",
+                "gpt-5.4",
+            ]
+        )
+        let runningSnapshot = workspace.sessionSnapshot(
+            includeScrollback: false,
+            restorableAgentIndex: runningIndex
+        )
+        XCTAssertEqual(runningSnapshot.panels.first?.terminal?.agent?.sessionId, "codex-running-session")
+
+        workspace.updatePanelShellActivityState(panelId: panelId, state: .promptIdle)
+        let idleSnapshot = workspace.sessionSnapshot(
+            includeScrollback: false,
+            restorableAgentIndex: runningIndex
+        )
+        XCTAssertNil(idleSnapshot.panels.first?.terminal?.agent)
+    }
+
     private func makeRestorableAgentIndex(
         kind: RestorableAgentKind = .codex,
         workspaceId: UUID,
@@ -1336,7 +1383,8 @@ final class SessionPersistenceTests: XCTestCase {
         arguments: [String],
         launcher: String? = nil,
         executablePath: String? = nil,
-        environment: [String: String]? = nil
+        environment: [String: String]? = nil,
+        pid: Int? = nil
     ) throws -> RestorableAgentSessionIndex {
         let home = FileManager.default.temporaryDirectory
             .appendingPathComponent("cmux-agent-hook-store-\(UUID().uuidString)", isDirectory: true)
@@ -1358,6 +1406,8 @@ final class SessionPersistenceTests: XCTestCase {
                 resolvedEnvironment = ["CODEX_HOME": "/tmp/codex"]
             case .pi:
                 resolvedEnvironment = ["PI_CODING_AGENT_DIR": "/tmp/pi"]
+            case .amp:
+                resolvedEnvironment = ["AMP_SETTINGS_FILE": "/tmp/amp-settings.json"]
             case .cursor, .rovodev, .factory, .custom:
                 resolvedEnvironment = [:]
             case .gemini:
@@ -1377,25 +1427,30 @@ final class SessionPersistenceTests: XCTestCase {
         let resolvedExecutablePath = executablePath ?? arguments.first ?? "/usr/local/bin/\(kind.rawValue)"
         let resolvedLauncher = launcher ?? kind.rawValue
 
+        var sessionRecord: [String: Any] = [
+            "sessionId": sessionId,
+            "workspaceId": workspaceId.uuidString,
+            "surfaceId": panelId.uuidString,
+            "cwd": "/tmp/repo",
+            "updatedAt": Date.now.timeIntervalSince1970,
+            "launchCommand": [
+                "launcher": resolvedLauncher,
+                "executablePath": resolvedExecutablePath,
+                "arguments": arguments,
+                "workingDirectory": "/tmp/repo",
+                "environment": resolvedEnvironment,
+                "capturedAt": Date.now.timeIntervalSince1970,
+                "source": "process",
+            ],
+        ]
+        if let pid {
+            sessionRecord["pid"] = pid
+        }
+
         let jsonObject: [String: Any] = [
             "version": 1,
             "sessions": [
-                sessionId: [
-                    "sessionId": sessionId,
-                    "workspaceId": workspaceId.uuidString,
-                    "surfaceId": panelId.uuidString,
-                    "cwd": "/tmp/repo",
-                    "updatedAt": Date().timeIntervalSince1970,
-                    "launchCommand": [
-                        "launcher": resolvedLauncher,
-                        "executablePath": resolvedExecutablePath,
-                        "arguments": arguments,
-                        "workingDirectory": "/tmp/repo",
-                        "environment": resolvedEnvironment,
-                        "capturedAt": Date().timeIntervalSince1970,
-                        "source": "process",
-                    ],
-                ],
+                sessionId: sessionRecord,
             ],
         ]
         let data = try JSONSerialization.data(withJSONObject: jsonObject, options: [.prettyPrinted])
@@ -1653,6 +1708,28 @@ final class SocketListenerAcceptPolicyTests: XCTestCase {
         )
     }
 
+    func testSessionEntryClaudeResumeCommandChangesToSessionCwdBeforeResume() {
+        let entry = SessionEntry(
+            id: "claude:a22293b7-bcef-4707-8439-2f538c8517a4",
+            agent: .claude,
+            sessionId: "a22293b7-bcef-4707-8439-2f538c8517a4",
+            title: "resume me",
+            cwd: "/Users/tiffanysun/fun",
+            gitBranch: nil,
+            pullRequest: nil,
+            modified: Date(timeIntervalSince1970: 0),
+            fileURL: URL(
+                fileURLWithPath: "/Users/tiffanysun/.claude/projects/-Users-tiffanysun-fun/a22293b7-bcef-4707-8439-2f538c8517a4.jsonl"
+            ),
+            specifics: .claude(model: nil, permissionMode: nil)
+        )
+
+        XCTAssertEqual(
+            entry.resumeCommand,
+            "cd /Users/tiffanysun/fun && env CLAUDE_CONFIG_DIR=/Users/tiffanysun/.claude CMUX_PRESERVE_CLAUDE_AUTH_SELECTION_ENV=1 CMUX_PRESERVE_CLAUDE_AUTH_SELECTION_ENV_KEYS=CLAUDE_CONFIG_DIR claude --resume a22293b7-bcef-4707-8439-2f538c8517a4"
+        )
+    }
+
     func testRestorableAgentStartupInputUsesInlineCommandWhenShort() {
         let snapshot = SessionRestorableAgentSnapshot(
             kind: .claude,
@@ -1767,6 +1844,8 @@ final class SocketListenerAcceptPolicyTests: XCTestCase {
                 executablePath: "/Users/lawrence/.local/bin/claude",
                 arguments: [
                     "/Users/lawrence/.local/bin/claude",
+                    "--dangerously-load-development-channels",
+                    "server:custom-dev-channel",
                     "--dangerously-skip-permissions"
                 ],
                 workingDirectory: "/Users/lawrence/fun",
@@ -1782,7 +1861,7 @@ final class SocketListenerAcceptPolicyTests: XCTestCase {
 
         XCTAssertEqual(
             snapshot.resumeCommand,
-            "cd '/Users/lawrence/fun' && 'env' 'CLAUDE_CONFIG_DIR=/Users/lawrence/.codex-accounts/claude/_p1775010019397' 'CMUX_PRESERVE_CLAUDE_AUTH_SELECTION_ENV=1' 'CMUX_PRESERVE_CLAUDE_AUTH_SELECTION_ENV_KEYS=CLAUDE_CONFIG_DIR' '/Users/lawrence/.local/bin/claude' '--resume' '24ec0052-450c-4914-b1dd-2ee80d4bc84b' '--dangerously-skip-permissions'"
+            "cd '/Users/lawrence/fun' && 'env' 'CLAUDE_CONFIG_DIR=/Users/lawrence/.codex-accounts/claude/_p1775010019397' 'CMUX_PRESERVE_CLAUDE_AUTH_SELECTION_ENV=1' 'CMUX_PRESERVE_CLAUDE_AUTH_SELECTION_ENV_KEYS=CLAUDE_CONFIG_DIR' '/Users/lawrence/.local/bin/claude' '--resume' '24ec0052-450c-4914-b1dd-2ee80d4bc84b' '--dangerously-load-development-channels' 'server:custom-dev-channel' '--dangerously-skip-permissions'"
         )
     }
 
@@ -2161,5 +2240,81 @@ final class SidebarDragFailsafePolicyTests: XCTestCase {
                 forMouseEventType: .leftMouseDragged
             )
         )
+    }
+}
+
+extension SessionPersistenceTests {
+    func testMarkdownFileLinkResolverRecognizesMarkdownPathLikeStrings() {
+        XCTAssertTrue(MarkdownPanelFileLinkResolver.isMarkdownPathLike("other-markdown.md"))
+        XCTAssertTrue(MarkdownPanelFileLinkResolver.isMarkdownPathLike("test/markdown.md"))
+        XCTAssertTrue(MarkdownPanelFileLinkResolver.isMarkdownPathLike("../notes/plan.mdx#section"))
+        XCTAssertTrue(MarkdownPanelFileLinkResolver.isMarkdownPathLike("file:///tmp/plan.markdown"))
+
+        XCTAssertFalse(MarkdownPanelFileLinkResolver.isMarkdownPathLike("https://example.com/plan.md"))
+        XCTAssertFalse(MarkdownPanelFileLinkResolver.isMarkdownPathLike("mailto:person@example.com"))
+        XCTAssertFalse(MarkdownPanelFileLinkResolver.isMarkdownPathLike("README.txt"))
+        XCTAssertFalse(MarkdownPanelFileLinkResolver.isMarkdownPathLike("md"))
+    }
+
+    func testMarkdownFileLinkResolverPrefersCurrentMarkdownDirectory() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cmux-markdown-link-resolver-\(UUID().uuidString)", isDirectory: true)
+        let docs = root.appendingPathComponent("docs", isDirectory: true)
+        let cwdFile = root.appendingPathComponent("other-markdown.md")
+        let adjacentFile = docs.appendingPathComponent("other-markdown.md")
+        let openedFile = docs.appendingPathComponent("index.md")
+
+        try FileManager.default.createDirectory(at: docs, withIntermediateDirectories: true)
+        try "cwd".write(to: cwdFile, atomically: true, encoding: .utf8)
+        try "adjacent".write(to: adjacentFile, atomically: true, encoding: .utf8)
+        try "index".write(to: openedFile, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let resolved = MarkdownPanelFileLinkResolver.resolve(
+            rawPath: "other-markdown.md",
+            relativeToMarkdownFile: openedFile.path
+        )
+        XCTAssertEqual(resolved, adjacentFile.path)
+    }
+
+    func testMarkdownFileLinkResolverFallsBackToProcessWorkingDirectory() throws {
+        let originalCWD = FileManager.default.currentDirectoryPath
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cmux-markdown-link-resolver-cwd-\(UUID().uuidString)", isDirectory: true)
+        let docs = root.appendingPathComponent("docs", isDirectory: true)
+        let openedFile = docs.appendingPathComponent("index.md")
+        let fallbackFile = root.appendingPathComponent("test/markdown.md")
+
+        try FileManager.default.createDirectory(at: docs, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: fallbackFile.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try "index".write(to: openedFile, atomically: true, encoding: .utf8)
+        try "fallback".write(to: fallbackFile, atomically: true, encoding: .utf8)
+        defer {
+            FileManager.default.changeCurrentDirectoryPath(originalCWD)
+            try? FileManager.default.removeItem(at: root)
+        }
+        XCTAssertTrue(FileManager.default.changeCurrentDirectoryPath(root.path))
+
+        let resolved = MarkdownPanelFileLinkResolver.resolve(
+            rawPath: "test/markdown.md",
+            relativeToMarkdownFile: openedFile.path
+        )
+        XCTAssertEqual(resolved, fallbackFile.path)
+    }
+
+    func testMarkdownFileLinkResolverRejectsMissingAndNonMarkdownFiles() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cmux-markdown-link-resolver-reject-\(UUID().uuidString)", isDirectory: true)
+        let openedFile = root.appendingPathComponent("index.md")
+        let textFile = root.appendingPathComponent("notes.txt")
+
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try "index".write(to: openedFile, atomically: true, encoding: .utf8)
+        try "text".write(to: textFile, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        XCTAssertNil(MarkdownPanelFileLinkResolver.resolve(rawPath: "missing.md", relativeToMarkdownFile: openedFile.path))
+        XCTAssertNil(MarkdownPanelFileLinkResolver.resolve(rawPath: "notes.txt", relativeToMarkdownFile: openedFile.path))
+        XCTAssertNil(MarkdownPanelFileLinkResolver.resolve(rawPath: "https://example.com/notes.md", relativeToMarkdownFile: openedFile.path))
     }
 }

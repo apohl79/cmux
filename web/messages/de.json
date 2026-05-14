@@ -298,7 +298,7 @@
       "browserLinkBehavior": "Browser-Link-Verhalten",
       "browserLinkDesc": "Unter Einstellungen > Browser stellt cmux zwei Host-Listen mit unterschiedlichen Zwecken bereit:",
       "browserHostsEmbed": "Hosts im eingebetteten Browser öffnen: Gilt für Links, die aus der Terminal-Ausgabe geklickt werden. Hosts in dieser Liste öffnen sich in cmux; andere Hosts öffnen sich in Ihrem Standardbrowser. Unterstützt einen Host oder Wildcard pro Zeile (zum Beispiel: example.com, *.internal.example).",
-      "browserHostsHttp": "Im eingebetteten Browser erlaubte HTTP-Hosts: Gilt nur für HTTP-URLs (nicht HTTPS). Hosts in dieser Liste können in cmux ohne Warnhinweis geöffnet werden. Standardmäßig enthalten sind localhost, 127.0.0.1, ::1, 0.0.0.0 und *.localtest.me.",
+      "browserHostsHttp": "Im eingebetteten Browser erlaubte HTTP-Hosts: Gilt nur für HTTP-URLs (nicht HTTPS). Hosts in dieser Liste können in cmux ohne Warnhinweis geöffnet werden. Standardmäßig enthalten sind localhost, *.localhost, 127.0.0.1, ::1, 0.0.0.0 und *.localtest.me.",
       "exampleConfig": "Beispielkonfiguration",
       "metaTitle": "Konfiguration"
     },
@@ -602,7 +602,12 @@
       "nodejs": "Node.js",
       "tmuxPassthrough": "tmux Passthrough",
       "tmuxDesc": "Wenn Sie tmux innerhalb von cmux verwenden, aktivieren Sie Passthrough:",
-      "metaTitle": "Benachrichtigungen"
+      "metaTitle": "Benachrichtigungen",
+      "hooksTitle": "Benachrichtigungs-Hooks",
+      "hooksIntro": "<config>cmux.json</config> kann Benachrichtigungs-Hooks definieren, die jede Benachrichtigungsrichtlinie als JSON über stdin erhalten. Jeder Hook gibt JSON über stdout zurück. Hooks sind standardmäßig deaktiviert; cmux führt sie nur aus, wenn <hooksMode>notifications.hooks</hooksMode> mindestens einen aktivierten Hook enthält. cmux übernimmt den zurückgegebenen Text und die Effekte, sodass Hooks Banner filtern, den Verlauf in der Seitenleiste behalten oder überspringen, Sounds ausführen oder spätere Hooks stoppen können.",
+      "hooksJsonTitle": "cmux.json",
+      "hooksIOTitle": "Hook-Eingabe und -Ausgabe",
+      "hooksDetails": "Hooks werden aus der globalen Datei <globalConfig>~/.config/cmux/cmux.json</globalConfig> und aus Projektdateien <projectConfig>.cmux/cmux.json</projectConfig> von übergeordneten Ordnern bis zum aktuellen Workspace geerbt. Projekt-Hooks verwenden vor dem Ausführen denselben Vertrauensdialog wie andere Projektbefehle in <config>cmux.json</config>. Feed-Freigabebanner laufen ebenfalls durch diese Hooks. Wenn <desktop>desktop</desktop> deaktiviert ist, wird das native Banner unterdrückt, während der Feed-Eintrag in cmux verfügbar bleibt. Setze <hooksMode>notifications.hooksMode</hooksMode> in einer Projektkonfiguration auf <replace>replace</replace>, um geerbte Hooks zu ignorieren. Wenn ein Hook fehlschlägt, abläuft oder ungültiges JSON zurückgibt, verwendet cmux das Standardverhalten und zeigt eine Hook-Fehlerwarnung."
     },
     "browserAutomation": {
       "title": "Browser-Automatisierung",

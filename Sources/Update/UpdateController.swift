@@ -9,40 +9,19 @@ enum UpdateSettings {
     static let scheduledCheckIntervalKey = "SUScheduledCheckInterval"
     static let sendProfileInfoKey = "SUSendProfileInfo"
     static let migrationKey = "cmux.sparkle.automaticChecksMigration.v2"
-    static let previousDefaultScheduledCheckInterval: TimeInterval = 60 * 60 * 24
     static let scheduledCheckInterval: TimeInterval = 60 * 60
 
     static func apply(to defaults: UserDefaults) {
         defaults.register(defaults: [
-            automaticChecksKey: true,
+            automaticChecksKey: false,
             automaticallyUpdateKey: false,
             scheduledCheckIntervalKey: scheduledCheckInterval,
             sendProfileInfoKey: false,
         ])
 
-        guard !defaults.bool(forKey: migrationKey) else { return }
-
-        // Repair older installs that may have ended up with automatic checks disabled
-        // before the updater defaults were embedded in Info.plist.
-        defaults.set(true, forKey: automaticChecksKey)
-
-        if let interval = defaults.object(forKey: scheduledCheckIntervalKey) as? NSNumber {
-            let currentInterval = interval.doubleValue
-            if currentInterval <= 0 ||
-                abs(currentInterval - previousDefaultScheduledCheckInterval) < 1 {
-                defaults.set(scheduledCheckInterval, forKey: scheduledCheckIntervalKey)
-            }
-        } else {
-            defaults.set(scheduledCheckInterval, forKey: scheduledCheckIntervalKey)
-        }
-
-        if defaults.object(forKey: automaticallyUpdateKey) == nil {
-            defaults.set(false, forKey: automaticallyUpdateKey)
-        }
-        if defaults.object(forKey: sendProfileInfoKey) == nil {
-            defaults.set(false, forKey: sendProfileInfoKey)
-        }
-
+        // local/all-features: disable Sparkle automatic checks regardless of any prior
+        // migration state. Manual "Check for Updates…" remains functional.
+        defaults.set(false, forKey: automaticChecksKey)
         defaults.set(true, forKey: migrationKey)
     }
 }

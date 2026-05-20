@@ -1920,6 +1920,322 @@ final class StoredShortcutMatchingTests: XCTestCase {
         )
     }
 
+    func testShortcutRecordingResultRecordsGermanPlusKeyAsPlus() {
+        // German Mac ISO: kVK_ANSI_RightBracket (keyCode 30) produces "+" unshifted
+        // (and "*" shifted). Recording must capture this as Cmd+Plus, not Cmd+]
+        // (which is what a US-ANSI mapping would suggest).
+        guard let event = NSEvent.keyEvent(
+            with: .keyDown,
+            location: .zero,
+            modifierFlags: [.command],
+            timestamp: ProcessInfo.processInfo.systemUptime,
+            windowNumber: 0,
+            context: nil,
+            characters: "+",
+            charactersIgnoringModifiers: "+",
+            isARepeat: false,
+            keyCode: 30
+        ) else {
+            XCTFail("Failed to construct German Cmd+Plus event")
+            return
+        }
+
+        XCTAssertEqual(
+            ShortcutStroke.recordingResult(
+                from: event,
+                requireModifier: true,
+                layoutCharacterProvider: germanLayoutCharacterProvider
+            ),
+            .accepted(ShortcutStroke(key: "+", command: true, shift: false, option: false, control: false, keyCode: 30))
+        )
+    }
+
+    func testShortcutRecordingResultRecordsGermanHashKeyAsHash() {
+        // German Mac ISO: kVK_ANSI_Backslash (keyCode 42) produces "#" unshifted.
+        // Recording must capture "#" rather than the US-ANSI "\\".
+        guard let event = NSEvent.keyEvent(
+            with: .keyDown,
+            location: .zero,
+            modifierFlags: [.command],
+            timestamp: ProcessInfo.processInfo.systemUptime,
+            windowNumber: 0,
+            context: nil,
+            characters: "#",
+            charactersIgnoringModifiers: "#",
+            isARepeat: false,
+            keyCode: 42
+        ) else {
+            XCTFail("Failed to construct German Cmd+# event")
+            return
+        }
+
+        XCTAssertEqual(
+            ShortcutStroke.recordingResult(
+                from: event,
+                requireModifier: true,
+                layoutCharacterProvider: germanLayoutCharacterProvider
+            ),
+            .accepted(ShortcutStroke(key: "#", command: true, shift: false, option: false, control: false, keyCode: 42))
+        )
+    }
+
+    func testShortcutRecordingResultFallsBackToANSIMappingForNonASCIILayoutChar() {
+        // German Mac ISO: kVK_ANSI_LeftBracket (keyCode 33) produces "ü" unshifted.
+        // "ü" is not a recordable ASCII symbol, so we fall back to the US-ANSI "["
+        // mapping rather than recording a non-ASCII character.
+        guard let event = NSEvent.keyEvent(
+            with: .keyDown,
+            location: .zero,
+            modifierFlags: [.command],
+            timestamp: ProcessInfo.processInfo.systemUptime,
+            windowNumber: 0,
+            context: nil,
+            characters: "ü",
+            charactersIgnoringModifiers: "ü",
+            isARepeat: false,
+            keyCode: 33
+        ) else {
+            XCTFail("Failed to construct German Cmd+ü event")
+            return
+        }
+
+        XCTAssertEqual(
+            ShortcutStroke.recordingResult(
+                from: event,
+                requireModifier: true,
+                layoutCharacterProvider: germanLayoutCharacterProvider
+            ),
+            .accepted(ShortcutStroke(key: "[", command: true, shift: false, option: false, control: false, keyCode: 33))
+        )
+    }
+
+    func testShortcutRecordingResultRecordsUSEqualsKeyAsEquals() {
+        // US ANSI: kVK_ANSI_Equal (keyCode 24) produces "=" unshifted. Recording
+        // must continue to capture this as "=" (regression check that the
+        // layout-aware path doesn't change US behavior).
+        guard let event = NSEvent.keyEvent(
+            with: .keyDown,
+            location: .zero,
+            modifierFlags: [.command],
+            timestamp: ProcessInfo.processInfo.systemUptime,
+            windowNumber: 0,
+            context: nil,
+            characters: "=",
+            charactersIgnoringModifiers: "=",
+            isARepeat: false,
+            keyCode: 24
+        ) else {
+            XCTFail("Failed to construct US Cmd+= event")
+            return
+        }
+
+        XCTAssertEqual(
+            ShortcutStroke.recordingResult(
+                from: event,
+                requireModifier: true,
+                layoutCharacterProvider: usANSILayoutCharacterProvider
+            ),
+            .accepted(ShortcutStroke(key: "=", command: true, shift: false, option: false, control: false, keyCode: 24))
+        )
+    }
+
+    func testDefaultBrowserZoomInMatchesGermanCmdPlusEvent() {
+        let shortcut = KeyboardShortcutSettings.Action.browserZoomIn.defaultShortcut.firstStroke
+
+        guard let event = NSEvent.keyEvent(
+            with: .keyDown,
+            location: .zero,
+            modifierFlags: [.command],
+            timestamp: ProcessInfo.processInfo.systemUptime,
+            windowNumber: 0,
+            context: nil,
+            characters: "+",
+            charactersIgnoringModifiers: "+",
+            isARepeat: false,
+            keyCode: 30
+        ) else {
+            XCTFail("Failed to construct German Cmd+Plus event")
+            return
+        }
+
+        XCTAssertTrue(shortcut.matches(event: event, layoutCharacterProvider: germanLayoutCharacterProvider))
+    }
+
+    func testStoredCmdPlusMatchesGermanCmdPlusEvent() {
+        // After recording, a German user's Cmd+Plus stores as key="+". Pressing
+        // Cmd+Plus again must fire the stored shortcut.
+        let shortcut = ShortcutStroke(key: "+", command: true, shift: false, option: false, control: false, keyCode: 30)
+
+        guard let event = NSEvent.keyEvent(
+            with: .keyDown,
+            location: .zero,
+            modifierFlags: [.command],
+            timestamp: ProcessInfo.processInfo.systemUptime,
+            windowNumber: 0,
+            context: nil,
+            characters: "+",
+            charactersIgnoringModifiers: "+",
+            isARepeat: false,
+            keyCode: 30
+        ) else {
+            XCTFail("Failed to construct German Cmd+Plus event")
+            return
+        }
+
+        XCTAssertTrue(shortcut.matches(event: event, layoutCharacterProvider: germanLayoutCharacterProvider))
+    }
+
+    func testStoredCmdPlusMatchesUSCmdEqualsEvent() {
+        // Symmetric: a Cmd+Plus shortcut bound on a German keyboard should still
+        // fire when the same user later uses a US-layout keyboard and presses
+        // Cmd+= (keyCode 24, character "=", no shift).
+        let shortcut = ShortcutStroke(key: "+", command: true, shift: false, option: false, control: false, keyCode: 30)
+
+        guard let event = NSEvent.keyEvent(
+            with: .keyDown,
+            location: .zero,
+            modifierFlags: [.command],
+            timestamp: ProcessInfo.processInfo.systemUptime,
+            windowNumber: 0,
+            context: nil,
+            characters: "=",
+            charactersIgnoringModifiers: "=",
+            isARepeat: false,
+            keyCode: 24
+        ) else {
+            XCTFail("Failed to construct US Cmd+= event")
+            return
+        }
+
+        XCTAssertTrue(shortcut.matches(event: event, layoutCharacterProvider: usANSILayoutCharacterProvider))
+    }
+
+    func testStoredCmdEqualsStillMatchesUSCmdEqualsEvent() {
+        // Regression: ensure the canonicalization does not break US Cmd+=.
+        let shortcut = ShortcutStroke(key: "=", command: true, shift: false, option: false, control: false)
+
+        guard let event = NSEvent.keyEvent(
+            with: .keyDown,
+            location: .zero,
+            modifierFlags: [.command],
+            timestamp: ProcessInfo.processInfo.systemUptime,
+            windowNumber: 0,
+            context: nil,
+            characters: "=",
+            charactersIgnoringModifiers: "=",
+            isARepeat: false,
+            keyCode: 24
+        ) else {
+            XCTFail("Failed to construct US Cmd+= event")
+            return
+        }
+
+        XCTAssertTrue(shortcut.matches(event: event, layoutCharacterProvider: usANSILayoutCharacterProvider))
+    }
+
+    func testStoredCmdEqualsAndCmdPlusAreDetectedAsConflicting() {
+        // Conflict detection must treat Cmd+= and Cmd+Plus as the same shortcut
+        // slot so the recorder warns users instead of silently double-binding.
+        KeyboardShortcutSettings.resetAll()
+        defer { KeyboardShortcutSettings.resetAll() }
+
+        let plusShortcut = StoredShortcut(key: "+", command: true, shift: false, option: false, control: false)
+
+        // browserZoomIn defaults to Cmd+= (key="="); recording Cmd+Plus for a
+        // different action must surface the conflict.
+        let resolution = KeyboardShortcutSettings.Action.equalizeSplits.normalizedRecordedShortcutResult(plusShortcut)
+
+        guard case .rejected(let reason) = resolution else {
+            XCTFail("Expected Cmd+Plus to be rejected as conflicting with the default Cmd+= shortcut, got: \(resolution)")
+            return
+        }
+        switch reason {
+        case .conflictsWithAction:
+            break
+        default:
+            XCTFail("Expected a conflicts-with-action rejection, got: \(reason)")
+        }
+    }
+
+    func testStoredCmdRightBracketDoesNotMatchGermanCmdPlusEvent() {
+        // Regression for https://github.com/manaflow-ai/cmux issue: on a German
+        // keyboard keyCode 30 produces "+", but it is also the ANSI keyCode for
+        // "]". The default browserForward shortcut is cmd+]. Without the layout
+        // disambiguation, a German Cmd+Plus event would match BOTH cmd+] (via
+        // ANSI keyCode fallback) AND cmd++ (via canonical character match),
+        // letting browserForward swallow the event before browserZoomIn runs.
+        let shortcut = ShortcutStroke(key: "]", command: true, shift: false, option: false, control: false)
+
+        guard let event = NSEvent.keyEvent(
+            with: .keyDown,
+            location: .zero,
+            modifierFlags: [.command],
+            timestamp: ProcessInfo.processInfo.systemUptime,
+            windowNumber: 0,
+            context: nil,
+            characters: "+",
+            charactersIgnoringModifiers: "+",
+            isARepeat: false,
+            keyCode: 30
+        ) else {
+            XCTFail("Failed to construct German Cmd+Plus event")
+            return
+        }
+
+        XCTAssertFalse(shortcut.matches(event: event, layoutCharacterProvider: germanLayoutCharacterProvider))
+    }
+
+    func testStoredCmdRightBracketStillMatchesUSCmdRightBracketEvent() {
+        // Regression guard: the German disambiguation must not break the US
+        // case where Cmd+] really is cmd+].
+        let shortcut = ShortcutStroke(key: "]", command: true, shift: false, option: false, control: false)
+
+        guard let event = NSEvent.keyEvent(
+            with: .keyDown,
+            location: .zero,
+            modifierFlags: [.command],
+            timestamp: ProcessInfo.processInfo.systemUptime,
+            windowNumber: 0,
+            context: nil,
+            characters: "]",
+            charactersIgnoringModifiers: "]",
+            isARepeat: false,
+            keyCode: 30
+        ) else {
+            XCTFail("Failed to construct US Cmd+] event")
+            return
+        }
+
+        XCTAssertTrue(shortcut.matches(event: event, layoutCharacterProvider: usANSILayoutCharacterProvider))
+    }
+
+    func testStoredCmdLeftBracketStillMatchesGermanCmdUEUmlautViaKeyCodeFallback() {
+        // The disambiguation must only suppress fallback when the layout char
+        // is itself a recognized shortcut symbol. "ü" is not — so a German user
+        // pressing Cmd+ü on keyCode 33 should still match a stored cmd+[
+        // (keyCode 33 on US-ANSI). This is the intended cross-layout behavior
+        // for non-recognised layout characters.
+        let shortcut = ShortcutStroke(key: "[", command: true, shift: false, option: false, control: false)
+
+        guard let event = NSEvent.keyEvent(
+            with: .keyDown,
+            location: .zero,
+            modifierFlags: [.command],
+            timestamp: ProcessInfo.processInfo.systemUptime,
+            windowNumber: 0,
+            context: nil,
+            characters: "ü",
+            charactersIgnoringModifiers: "ü",
+            isARepeat: false,
+            keyCode: 33
+        ) else {
+            XCTFail("Failed to construct German Cmd+ü event")
+            return
+        }
+
+        XCTAssertTrue(shortcut.matches(event: event, layoutCharacterProvider: germanLayoutCharacterProvider))
+    }
+
     func testMediaShortcutDoesNotMatchOrdinaryKeyDownWithSameKeyCode() {
         let shortcut = ShortcutStroke(
             key: "media.volumeUp",

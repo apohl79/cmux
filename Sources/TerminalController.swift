@@ -2654,6 +2654,8 @@ class TerminalController {
             return v2Result(id: id, self.v2BrowserReload(params: params))
         case "browser.url.get":
             return v2Result(id: id, self.v2BrowserGetURL(params: params))
+        case "browser.zoom.get":
+            return v2Result(id: id, self.v2BrowserGetZoom(params: params))
         case "browser.focus_webview":
             return v2Result(id: id, self.v2BrowserFocusWebView(params: params))
         case "browser.is_webview_focused":
@@ -3006,6 +3008,7 @@ class TerminalController {
             "browser.forward",
             "browser.reload",
             "browser.url.get",
+            "browser.zoom.get",
             "browser.snapshot",
             "browser.eval",
             "browser.wait",
@@ -10652,6 +10655,16 @@ class TerminalController {
         return result
     }
 
+    private func v2BrowserGetZoom(params: [String: Any]) -> V2CallResult {
+        v2BrowserWithPanel(params: params) { _tabManager, ws, surfaceId, browserPanel in
+            .ok([
+                "workspace_id": ws.id.uuidString,
+                "surface_id": surfaceId.uuidString,
+                "page_zoom": Double(browserPanel.webView.pageZoom)
+            ])
+        }
+    }
+
     private func v2BrowserFocusWebView(params: [String: Any]) -> V2CallResult {
         guard let tabManager = v2ResolveTabManager(params: params) else {
             return .err(code: "unavailable", message: "TabManager not available", data: nil)
@@ -10672,9 +10685,12 @@ class TerminalController {
             if tabManager.selectedTabId != ws.id {
                 tabManager.selectWorkspace(ws)
             }
+            ws.focusPanel(surfaceId)
 
-            // Prevent omnibar auto-focus from immediately stealing first responder back.
-            browserPanel.suppressOmnibarAutofocus(for: 1.0)
+            browserPanel.endSuppressWebViewFocusForAddressBar()
+            browserPanel.clearWebViewFocusSuppression()
+            NotificationCenter.default.post(name: .browserDidBlurAddressBar, object: surfaceId)
+            browserPanel.suppressOmnibarAutofocus(for: 1.5)
 
             let webView = browserPanel.webView
             guard let window = webView.window else {
@@ -10687,11 +10703,16 @@ class TerminalController {
             }
 
             window.makeFirstResponder(webView)
-            if let fr = window.firstResponder as? NSView, fr.isDescendant(of: webView) {
-                result = .ok(["focused": true])
-            } else {
-                result = .err(code: "internal_error", message: "Focus did not move into web view", data: nil)
+            if !Self.responderChainContains(window.firstResponder, target: webView) {
+                DispatchQueue.main.async { [weak window, weak webView] in
+                    guard let window, let webView else { return }
+                    guard webView.window === window else { return }
+                    if !Self.responderChainContains(window.firstResponder, target: webView) {
+                        window.makeFirstResponder(webView)
+                    }
+                }
             }
+            result = .ok(["focused": Self.responderChainContains(window.firstResponder, target: webView)])
         }
         return result
     }
@@ -10709,12 +10730,11 @@ class TerminalController {
             guard let ws = v2ResolveWorkspace(params: params, tabManager: tabManager),
                   let browserPanel = ws.browserPanel(for: surfaceId) else { return }
             let webView = browserPanel.webView
-            guard let window = webView.window,
-                  let fr = window.firstResponder as? NSView else {
+            guard let window = webView.window else {
                 focused = false
                 return
             }
-            focused = fr.isDescendant(of: webView)
+            focused = Self.responderChainContains(window.firstResponder, target: webView)
         }
         return .ok(["focused": focused])
     }
@@ -14106,6 +14126,10 @@ class TerminalController {
         let charactersIgnoringModifiers: String
 
         switch keyToken.lowercased() {
+        case "plus":
+            storedKey = "+"
+            keyCode = 30
+            charactersIgnoringModifiers = storedKey
         case "left":
             storedKey = "←"
             keyCode = 123

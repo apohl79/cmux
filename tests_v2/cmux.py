@@ -920,6 +920,11 @@ class cmux:
         res = self._call("browser.url.get", {"surface_id": sid}) or {}
         return str(res.get("url") or "")
 
+    def get_zoom(self, panel_id: str) -> float:
+        sid = self._resolve_surface_id(panel_id)
+        res = self._call("browser.zoom.get", {"surface_id": sid}) or {}
+        return float(res.get("page_zoom") or 0.0)
+
     def focus_webview(self, panel_id: str) -> None:
         sid = self._resolve_surface_id(panel_id)
         self._call("browser.focus_webview", {"surface_id": sid})

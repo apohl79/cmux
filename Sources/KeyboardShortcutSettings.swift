@@ -356,7 +356,7 @@ enum KeyboardShortcutSettings {
             case .browserReload:
                 return StoredShortcut(key: "r", command: true, shift: false, option: false, control: false)
             case .browserZoomIn:
-                return StoredShortcut(key: "=", command: true, shift: false, option: false, control: false)
+                return StoredShortcut(key: "+", command: true, shift: false, option: false, control: false)
             case .browserZoomOut:
                 return StoredShortcut(key: "-", command: true, shift: false, option: false, control: false)
             case .browserZoomReset:
@@ -1537,10 +1537,40 @@ struct ShortcutStroke: Equatable, Hashable {
                         || (!hasEventChars && (layoutCharacter?.isEmpty ?? true))
                 ))
         if allowANSIKeyCodeFallback,
-           let expectedKeyCode = Self.keyCodeForShortcutKey(shortcutKey) {
+           let expectedKeyCode = Self.keyCodeForShortcutKey(Self.canonicalShortcutKey(shortcutKey)),
+           !Self.layoutProducesDifferentRecognizedShortcutKey(
+                eventCharacter: eventCharacter,
+                layoutCharacter: layoutCharacter,
+                shortcutKey: shortcutKey
+           ) {
             return keyCode == expectedKeyCode
         }
 
+        return false
+    }
+
+    /// True when the user's layout produces a character that *is itself* a
+    /// recognised shortcut key (one with an ANSI keyCode mapping) and that
+    /// character canonicalises to something different from `shortcutKey`.
+    /// In that case the layout character should win over a historical ANSI
+    /// keyCode match — otherwise on a German layout pressing Cmd+Plus
+    /// (keyCode 30, char "+") would also satisfy a stored cmd+] (which is
+    /// also keyCode 30 on US-ANSI), creating a false ambiguity between two
+    /// distinct shortcuts.
+    private static func layoutProducesDifferentRecognizedShortcutKey(
+        eventCharacter: String?,
+        layoutCharacter: String?,
+        shortcutKey: String
+    ) -> Bool {
+        let canonicalShortcut = canonicalShortcutKey(shortcutKey)
+        for candidate in [eventCharacter, layoutCharacter] {
+            guard let candidate, candidate.count == 1 else { continue }
+            let lowered = candidate.lowercased()
+            guard keyCodeForShortcutKey(lowered) != nil else { continue }
+            if canonicalShortcutKey(lowered) != canonicalShortcut {
+                return true
+            }
+        }
         return false
     }
 

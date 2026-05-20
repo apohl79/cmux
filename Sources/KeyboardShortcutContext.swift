@@ -104,7 +104,15 @@ extension AppDelegate {
         }
 
         let responder = shortcutWindow.firstResponder
-        if cmuxOwningGhosttyView(for: responder) != nil {
+        // The ghostty bailout is intentionally LAST: cmuxOwningGhosttyView walks
+        // both the view hierarchy and the responder chain, so an unrelated
+        // ghostty view in another panel can falsely match even when a browser
+        // webView is the firstResponder. Check browser ownership first; only
+        // refuse to route the shortcut if no browser webView can be resolved
+        // AND a ghostty view does appear in the chain.
+        let responderHasBrowserWebView = shortcutOwningWebView(for: responder) != nil
+
+        if !responderHasBrowserWebView, cmuxOwningGhosttyView(for: responder) != nil {
             return nil
         }
 
@@ -155,7 +163,7 @@ extension AppDelegate {
         return shortcutFocusedBrowserPanel(in: window)
     }
 
-    private func shortcutResolvedEventWindow(_ event: NSEvent) -> NSWindow? {
+    func shortcutResolvedEventWindow(_ event: NSEvent) -> NSWindow? {
         if let window = event.window {
             return window
         }
@@ -174,7 +182,7 @@ extension AppDelegate {
         return nil
     }
 
-    private func shortcutBrowserPanel(webView: WKWebView) -> BrowserPanel? {
+    func shortcutBrowserPanel(webView: WKWebView) -> BrowserPanel? {
         for manager in shortcutCandidateTabManagers() {
             for workspace in manager.tabs {
                 for panel in workspace.panels.values {
@@ -203,7 +211,7 @@ extension AppDelegate {
         return managers
     }
 
-    private func shortcutOwningWebView(for responder: NSResponder?) -> WKWebView? {
+    func shortcutOwningWebView(for responder: NSResponder?) -> WKWebView? {
         guard let responder else { return nil }
         if let webView = responder as? WKWebView {
             return webView

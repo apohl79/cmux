@@ -11934,6 +11934,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             }
         }
 
+        if handleFocusedBrowserZoomShortcut(event) {
+#if DEBUG
+            cmuxDebugLog("zoom.shortcut stage=handleCustomShortcut.preNavigation event=\(NSWindow.keyDescription(event)) handled=1")
+#endif
+            return true
+        }
+
         if matchConfiguredShortcut(event: event, action: .browserBack) {
             guard let focusedBrowserPanel = shortcutEventBrowserPanel(event) else {
                 return false
@@ -11946,6 +11953,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             guard let focusedBrowserPanel = shortcutEventBrowserPanel(event) else {
                 return false
             }
+#if DEBUG
+            cmuxDebugLog("shortcut.action=browserForward event=\(NSWindow.keyDescription(event)) panel=\(focusedBrowserPanel.id.uuidString.prefix(5))")
+#endif
             focusedBrowserPanel.goForward()
             return true
         }
@@ -11995,18 +12005,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             let didHandle = tabManager?.toggleReactGrabFromCurrentFocus() ?? false
             if !didHandle { NSSound.beep() }
             return true
-        }
-
-        if matchConfiguredShortcut(event: event, action: .browserZoomIn) {
-            return shortcutEventBrowserPanel(event)?.zoomIn() ?? false
-        }
-
-        if matchConfiguredShortcut(event: event, action: .browserZoomOut) {
-            return shortcutEventBrowserPanel(event)?.zoomOut() ?? false
-        }
-
-        if matchConfiguredShortcut(event: event, action: .browserZoomReset) {
-            return shortcutEventBrowserPanel(event)?.resetZoom() ?? false
         }
 
         if matchConfiguredShortcut(event: event, action: .findInDirectory) {
@@ -12751,8 +12749,59 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     /// Allow AppKit-backed browser surfaces (WKWebView) to route non-menu shortcuts
     /// through the same app-level shortcut handler used by the local key monitor.
     @discardableResult
-    func handleBrowserSurfaceKeyEquivalent(_ event: NSEvent) -> Bool {
-        handleCustomShortcut(event: event)
+    func handleBrowserSurfaceKeyEquivalent(_ event: NSEvent, webView: WKWebView? = nil) -> Bool {
+        if handleBrowserSurfaceZoomShortcut(event, webView: webView) {
+            return true
+        }
+        return handleCustomShortcut(event: event)
+    }
+
+    @discardableResult
+    private func handleBrowserSurfaceZoomShortcut(_ event: NSEvent, webView: WKWebView?) -> Bool {
+        guard let webView,
+              let panel = shortcutBrowserPanel(webView: webView) else {
+            return false
+        }
+        return handleBrowserZoomShortcut(event, panel: panel)
+    }
+
+    @discardableResult
+    func handleFocusedBrowserZoomShortcut(_ event: NSEvent) -> Bool {
+        if let responder = (shortcutResolvedEventWindow(event) ?? NSApp.keyWindow ?? NSApp.mainWindow)?.firstResponder,
+           let webView = shortcutOwningWebView(for: responder),
+           let panel = shortcutBrowserPanel(webView: webView) {
+            return handleBrowserZoomShortcut(event, panel: panel)
+        }
+        guard let panel = shortcutEventBrowserPanel(event) else {
+            return false
+        }
+        return handleBrowserZoomShortcut(event, panel: panel)
+    }
+
+    @discardableResult
+    private func handleBrowserZoomShortcut(_ event: NSEvent, panel: BrowserPanel) -> Bool {
+        if matchConfiguredShortcut(event: event, shortcut: KeyboardShortcutSettings.shortcut(for: .browserZoomIn)) {
+            let handled = panel.zoomIn()
+#if DEBUG
+            cmuxDebugLog("zoom.shortcut action=browserZoomIn event=\(NSWindow.keyDescription(event)) panel=\(panel.id.uuidString.prefix(5)) handled=\(handled ? 1 : 0) zoom=\(String(format: "%.3f", panel.webView.pageZoom))")
+#endif
+            return handled
+        }
+        if matchConfiguredShortcut(event: event, shortcut: KeyboardShortcutSettings.shortcut(for: .browserZoomOut)) {
+            let handled = panel.zoomOut()
+#if DEBUG
+            cmuxDebugLog("zoom.shortcut action=browserZoomOut event=\(NSWindow.keyDescription(event)) panel=\(panel.id.uuidString.prefix(5)) handled=\(handled ? 1 : 0) zoom=\(String(format: "%.3f", panel.webView.pageZoom))")
+#endif
+            return handled
+        }
+        if matchConfiguredShortcut(event: event, shortcut: KeyboardShortcutSettings.shortcut(for: .browserZoomReset)) {
+            let handled = panel.resetZoom()
+#if DEBUG
+            cmuxDebugLog("zoom.shortcut action=browserZoomReset event=\(NSWindow.keyDescription(event)) panel=\(panel.id.uuidString.prefix(5)) handled=\(handled ? 1 : 0) zoom=\(String(format: "%.3f", panel.webView.pageZoom))")
+#endif
+            return handled
+        }
+        return false
     }
 
     /// WebKit can consume the configured Find shortcut as a browser find key equivalent before SwiftUI
@@ -14740,6 +14789,12 @@ private extension NSWindow {
                 keyCode: event.keyCode,
                 literalChars: event.characters
             ) {
+                if AppDelegate.shared?.handleFocusedBrowserZoomShortcut(event) == true {
+#if DEBUG
+                    cmuxDebugLog("zoom.shortcut stage=window.focusedBrowserBeforeGhostty event=\(Self.keyDescription(event)) handled=1")
+#endif
+                    return true
+                }
                 ghosttyView.keyDown(with: event)
 #if DEBUG
                 cmuxDebugLog("zoom.shortcut stage=window.ghosttyKeyDownDirect event=\(Self.keyDescription(event)) handled=1")
@@ -14837,7 +14892,7 @@ private extension NSWindow {
             return true
         }
 
-        if AppDelegate.shared?.handleBrowserSurfaceKeyEquivalent(event) == true {
+        if AppDelegate.shared?.handleBrowserSurfaceKeyEquivalent(event, webView: firstResponderWebView) == true {
 #if DEBUG
             cmuxDebugLog("  → consumed by handleBrowserSurfaceKeyEquivalent")
 #endif

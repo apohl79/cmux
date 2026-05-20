@@ -28,6 +28,20 @@ def focused_pane_id(client: cmux) -> Optional[str]:
     return None
 
 
+def focused_surface_id(client: cmux) -> Optional[str]:
+    for _idx, surface_id, is_focused in client.list_surfaces():
+        if is_focused:
+            return surface_id
+    return None
+
+
+def pane_containing_surface(client: cmux, surface_id: str) -> Optional[str]:
+    for _idx, pane_id, _count, _is_focused in client.list_panes():
+        if any(row_surface_id == surface_id for _row_idx, row_surface_id, _title, _selected in client.list_pane_surfaces(pane_id)):
+            return pane_id
+    return None
+
+
 def wait_url_contains(client: cmux, panel_id: str, needle: str, timeout_s: float = 10.0) -> None:
     start = time.time()
     while time.time() - start < timeout_s:
@@ -36,6 +50,35 @@ def wait_url_contains(client: cmux, panel_id: str, needle: str, timeout_s: float
             return
         time.sleep(0.1)
     raise RuntimeError(f"Timed out waiting for url to contain '{needle}': {url!r}")
+
+
+def wait_zoom_above(client: cmux, panel_id: str, baseline: float, timeout_s: float = 2.0) -> float:
+    start = time.time()
+    latest = client.get_zoom(panel_id)
+    while time.time() - start < timeout_s:
+        latest = client.get_zoom(panel_id)
+        if latest > baseline:
+            return latest
+        time.sleep(0.05)
+    raise RuntimeError(f"Timed out waiting for browser zoom above {baseline}; latest={latest}")
+
+
+def test_cmd_plus_browser_zoom_in_from_webview(client: cmux) -> tuple[bool, str]:
+    ws_id = client.new_workspace()
+    client.select_workspace(ws_id)
+    time.sleep(0.5)
+
+    browser_id = client.new_pane(direction="right", panel_type="browser", url="https://example.com")
+    wait_url_contains(client, browser_id, "example.com", timeout_s=15.0)
+
+    client.focus_webview(browser_id)
+    client.wait_for_webview_focus(browser_id, timeout_s=3.0)
+
+    before = client.get_zoom(browser_id)
+    client.simulate_shortcut("cmd+plus")
+    after = wait_zoom_above(client, browser_id, before)
+
+    return True, f"Cmd+Plus increased browser zoom from {before:.3f} to {after:.3f}"
 
 
 def test_cmd_ctrl_h_goto_split_left_from_webview(client: cmux) -> tuple[bool, str]:
@@ -59,7 +102,7 @@ def test_cmd_ctrl_h_goto_split_left_from_webview(client: cmux) -> tuple[bool, st
         if len(panes) != 2:
             return False, f"Expected 2 panes, got {len(panes)}: {panes}"
 
-        browser_pane_id = focused_pane_id(client)
+        browser_pane_id = pane_containing_surface(client, browser_id)
         terminal_pane_id = next((pid for _i, pid, _n, _f in panes if pid != browser_pane_id), None)
         if not browser_pane_id or not terminal_pane_id:
             return False, f"Could not identify terminal/browser pane IDs: {panes}"
@@ -68,9 +111,9 @@ def test_cmd_ctrl_h_goto_split_left_from_webview(client: cmux) -> tuple[bool, st
         client.focus_webview(browser_id)
         client.wait_for_webview_focus(browser_id, timeout_s=3.0)
 
-        pre = focused_pane_id(client)
-        if pre != browser_pane_id:
-            return False, f"Expected browser pane focused before keypress, got {pre}"
+        pre = focused_surface_id(client)
+        if pre != browser_id:
+            return False, f"Expected browser surface focused before keypress, got {pre}"
 
         # Send Cmd+Ctrl+H via socket event injection.
         client.simulate_shortcut("cmd+ctrl+h")
@@ -99,6 +142,7 @@ def test_cmd_opt_left_arrow_goto_split_left_from_webview(client: cmux) -> tuple[
 
     # Ensure we use the default arrow shortcut.
     client.set_shortcut("focus_left", "clear")
+    client.set_shortcut("focusLeft", "clear")
 
     browser_id = client.new_pane(direction="right", panel_type="browser", url="https://example.com")
     wait_url_contains(client, browser_id, "example.com", timeout_s=15.0)
@@ -115,9 +159,9 @@ def test_cmd_opt_left_arrow_goto_split_left_from_webview(client: cmux) -> tuple[
     client.focus_webview(browser_id)
     client.wait_for_webview_focus(browser_id, timeout_s=3.0)
 
-    pre = focused_pane_id(client)
-    if pre != browser_pane_id:
-        return False, f"Expected browser pane focused before keypress, got {pre}"
+    pre = focused_surface_id(client)
+    if pre != browser_id:
+        return False, f"Expected browser surface focused before keypress, got {pre}"
 
     client.simulate_shortcut("cmd+opt+left")
     time.sleep(0.4)
@@ -135,7 +179,7 @@ def main() -> int:
     client.connect()
 
     tests = [
-        ("Cmd+Opt+Left goto_split:left from webview focus", test_cmd_opt_left_arrow_goto_split_left_from_webview),
+        ("Cmd+Plus browser zoom-in from webview focus", test_cmd_plus_browser_zoom_in_from_webview),
         ("Cmd+Ctrl+H goto_split:left from webview focus", test_cmd_ctrl_h_goto_split_left_from_webview),
     ]
 

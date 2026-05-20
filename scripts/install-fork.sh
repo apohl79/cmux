@@ -7,6 +7,7 @@
 #   ./scripts/install-fork.sh --skip-build   # use the pre-built artifact in build/release
 #   ./scripts/install-fork.sh --skip-deps    # skip Homebrew/submodule preflight
 #   ./scripts/install-fork.sh --target ~/Applications/cmux.app
+#   ./scripts/install-fork.sh --arch x86_64  # override host arch detection (default: uname -m)
 #   APP_NAME=cmux-foo ./scripts/install-fork.sh
 #
 # Requirements:
@@ -17,8 +18,10 @@
 # What it does:
 #   1. Ensures Homebrew dependencies are installed (zig@0.15) and the
 #      vendor/bonsplit git submodule is initialized + up to date.
-#   2. (Unless --skip-build) Builds Release arm64 cmux.app via xcodebuild,
-#      with CODE_SIGNING_ALLOWED=NO. Output: build/release/Build/Products/Release/cmux.app
+#   2. (Unless --skip-build) Builds Release cmux.app via xcodebuild for the
+#      host architecture (arm64 on Apple Silicon, x86_64 on Intel; override
+#      with --arch), with CODE_SIGNING_ALLOWED=NO.
+#      Output: build/release/Build/Products/Release/cmux.app
 #   3. Removes any existing app at the target path.
 #   4. Copies the build artifact with ditto (preserving extended attributes,
 #      symlinks, and HFS metadata).
@@ -45,6 +48,7 @@ SKIP_BUILD=0
 SKIP_DEPS=0
 DERIVED_DATA="${DERIVED_DATA:-$PROJECT_DIR/build/release}"
 SOURCE_APP="${SOURCE_APP:-$DERIVED_DATA/Build/Products/Release/cmux.app}"
+ARCH="${ARCH:-$(uname -m)}"
 
 # Homebrew formulae the build needs at exact versions.
 BREW_FORMULAE=(zig@0.15)
@@ -55,6 +59,7 @@ while [[ $# -gt 0 ]]; do
     --skip-deps) SKIP_DEPS=1; shift ;;
     --target) TARGET="$2"; shift 2 ;;
     --source) SOURCE_APP="$2"; shift 2 ;;
+    --arch) ARCH="$2"; shift 2 ;;
     -h|--help)
       awk '/^set -euo pipefail/{exit} /^#!/{next} /^#( |$)/{sub(/^# ?/, ""); print}' "$0"
       exit 0
@@ -67,6 +72,14 @@ while [[ $# -gt 0 ]]; do
 done
 
 log() { printf '==> %s\n' "$*"; }
+
+case "$ARCH" in
+  arm64|x86_64) ;;
+  *)
+    echo "error: unsupported --arch '$ARCH' (expected arm64 or x86_64)" >&2
+    exit 2
+    ;;
+esac
 
 # ---------- Homebrew + submodule preflight -----------------------------------
 if [[ "$SKIP_DEPS" == "0" ]]; then
@@ -113,14 +126,14 @@ fi
 
 # ---------- Build (unless skipped) -------------------------------------------
 if [[ "$SKIP_BUILD" == "0" ]]; then
-  log "building Release (arm64) into $DERIVED_DATA"
+  log "building Release ($ARCH) into $DERIVED_DATA"
   xcodebuild \
     -project GhosttyTabs.xcodeproj \
     -scheme cmux \
     -configuration Release \
     -derivedDataPath "$DERIVED_DATA" \
-    -destination 'platform=macOS,arch=arm64' \
-    ARCHS=arm64 \
+    -destination "platform=macOS,arch=$ARCH" \
+    ARCHS="$ARCH" \
     ONLY_ACTIVE_ARCH=YES \
     CODE_SIGNING_ALLOWED=NO \
     build >/tmp/install-fork-build.log 2>&1 || {

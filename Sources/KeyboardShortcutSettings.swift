@@ -1729,6 +1729,10 @@ struct ShortcutStroke: Equatable, Hashable {
         }
     }
 
+    private static func canonicalShortcutKey(_ key: String) -> String {
+        key == "+" ? "=" : key
+    }
+
     private static func shouldRequireCharacterMatchForCommandShortcut(shortcutKey: String) -> Bool {
         guard shortcutKey.count == 1, let scalar = shortcutKey.unicodeScalars.first else {
             return false

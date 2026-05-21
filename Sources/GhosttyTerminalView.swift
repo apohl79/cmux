@@ -3550,11 +3550,12 @@ class GhosttyApp {
     }
 
     @MainActor
-    private static func openEmbeddedBrowserLink(
+    fileprivate static func openEmbeddedBrowserLink(
         url: URL,
         sourceWorkspaceId: UUID,
         sourcePanelId: UUID,
-        host: String
+        host: String,
+        placementOverride: BrowserTerminalLinkPlacement? = nil
     ) -> Bool {
         guard BrowserAvailabilitySettings.isEnabled() else {
             #if DEBUG
@@ -3587,11 +3588,12 @@ class GhosttyApp {
         }
         #endif
 
-        let placement = BrowserLinkOpenSettings.terminalLinkPlacement()
+        let placement = placementOverride ?? BrowserLinkOpenSettings.terminalLinkPlacement()
         let openedInBrowser: Bool
         if placement == .newSurface, let sourcePane = workspace.paneId(forPanelId: sourcePanelId) {
             openedInBrowser = workspace.newBrowserSurface(inPane: sourcePane, url: url, focus: true) != nil
-        } else if let targetPane = workspace.preferredRightSideTargetPane(fromPanelId: sourcePanelId) {
+        } else if placementOverride == nil,
+                  let targetPane = workspace.preferredRightSideTargetPane(fromPanelId: sourcePanelId) {
             #if DEBUG
             cmuxDebugLog("link.openURL opening in existing browser pane=\(targetPane)")
             #endif
@@ -9102,6 +9104,42 @@ class GhosttyNSView: NSView, NSUserInterfaceValidations {
                 systemSymbolName: "arrow.up.right.square",
                 accessibilityDescription: nil
             )
+            if BrowserAvailabilitySettings.isEnabled(),
+               terminalSurface != nil,
+               tabId != nil {
+                let placement = BrowserLinkOpenSettings.terminalLinkPlacement()
+                let overrideItem: NSMenuItem
+                switch placement {
+                case .split:
+                    overrideItem = menu.addItem(
+                        withTitle: String(
+                            localized: "terminalContextMenu.openLinkInCurrentPane",
+                            defaultValue: "Open Link in Current Pane"
+                        ),
+                        action: #selector(openHoveredLinkInCurrentPane(_:)),
+                        keyEquivalent: ""
+                    )
+                    overrideItem.image = NSImage(
+                        systemSymbolName: "rectangle.stack",
+                        accessibilityDescription: nil
+                    )
+                case .newSurface:
+                    overrideItem = menu.addItem(
+                        withTitle: String(
+                            localized: "terminalContextMenu.openLinkInNewSplitPane",
+                            defaultValue: "Open Link in New Split Pane"
+                        ),
+                        action: #selector(openHoveredLinkInNewSplitPane(_:)),
+                        keyEquivalent: ""
+                    )
+                    overrideItem.image = NSImage(
+                        systemSymbolName: "rectangle.righthalf.inset.filled",
+                        accessibilityDescription: nil
+                    )
+                }
+                overrideItem.target = self
+                overrideItem.representedObject = url
+            }
             menu.addItem(.separator())
         }
         if onTriggerFlash != nil {
@@ -9216,6 +9254,37 @@ class GhosttyNSView: NSView, NSUserInterfaceValidations {
         guard let item = sender as? NSMenuItem,
               let url = item.representedObject as? URL else { return }
         NSWorkspace.shared.open(url)
+    }
+
+    @objc private func openHoveredLinkInCurrentPane(_ sender: Any?) {
+        openHoveredLinkWithPlacementOverride(sender, placement: .newSurface)
+    }
+
+    @objc private func openHoveredLinkInNewSplitPane(_ sender: Any?) {
+        openHoveredLinkWithPlacementOverride(sender, placement: .split)
+    }
+
+    private func openHoveredLinkWithPlacementOverride(
+        _ sender: Any?,
+        placement: BrowserTerminalLinkPlacement
+    ) {
+        guard let item = sender as? NSMenuItem,
+              let url = item.representedObject as? URL else { return }
+        guard let sourceWorkspaceId = tabId,
+              let sourcePanelId = terminalSurface?.id else {
+            NSWorkspace.shared.open(url)
+            return
+        }
+        let didOpen = GhosttyApp.openEmbeddedBrowserLink(
+            url: url,
+            sourceWorkspaceId: sourceWorkspaceId,
+            sourcePanelId: sourcePanelId,
+            host: url.host ?? "",
+            placementOverride: placement
+        )
+        if !didOpen {
+            NSSound.beep()
+        }
     }
 
     // Read the row of terminal text at the right-click pixel position,

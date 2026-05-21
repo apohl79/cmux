@@ -1750,10 +1750,69 @@ class TerminalController {
         // ControlCommandCoordinator (drag_surface_to_split forwards to the
         // still-shared v2SurfaceSplitOff).
 
+            case "global_zoom_in":
+                return globalTerminalZoom(action: .zoomIn)
+
+            case "global_zoom_out":
+                return globalTerminalZoom(action: .zoomOut)
+
+            case "global_zoom_reset":
+                return globalTerminalZoom(action: .reset)
+
+            case "global_zoom_status":
+                return globalTerminalZoomStatus()
+
             default:
                 return "ERROR: Unknown command '\(cmd)'. Use 'help' for available commands."
             }
         }
+    }
+
+    private enum GlobalTerminalZoomAction {
+        case zoomIn
+        case zoomOut
+        case reset
+    }
+
+    private nonisolated func globalTerminalZoom(action: GlobalTerminalZoomAction) -> String {
+        let newDelta = v2MainSync { () -> Double in
+            switch action {
+            case .zoomIn:
+                return GlobalTerminalZoomController.shared.zoomIn()
+            case .zoomOut:
+                return GlobalTerminalZoomController.shared.zoomOut()
+            case .reset:
+                return GlobalTerminalZoomController.shared.zoomReset()
+            }
+        }
+        return String(format: "OK delta=%.3f", newDelta)
+    }
+
+    private nonisolated func globalTerminalZoomStatus() -> String {
+        let payload = v2MainSync { () -> String in
+            let snapshot = GlobalTerminalZoomController.shared.statusSnapshot()
+            var dict: [String: Any] = [
+                "delta": snapshot.delta,
+                "base_font_points": snapshot.baseFontPoints,
+                "target_font_points": snapshot.targetFontPoints,
+                "surface_count": snapshot.surfaces.count
+            ]
+            dict["surfaces"] = snapshot.surfaces.map { entry -> [String: Any] in
+                var item: [String: Any] = ["id": entry.id.uuidString]
+                if let points = entry.fontPoints {
+                    item["font_points"] = points
+                } else {
+                    item["font_points"] = NSNull()
+                }
+                return item
+            }
+            if let data = try? JSONSerialization.data(withJSONObject: dict, options: [.sortedKeys]),
+               let text = String(data: data, encoding: .utf8) {
+                return text
+            }
+            return "{}"
+        }
+        return "OK " + payload
     }
 
     // MARK: - V2 JSON Socket Protocol
@@ -10394,6 +10453,10 @@ class TerminalController {
           reload_config                   - Reload Ghostty config, cmux settings, and refresh terminals
           refresh_surfaces                - Force refresh all terminals
           surface_health [workspace]      - Check view health of all surfaces
+          global_zoom_in                  - Zoom in every terminal across every workspace
+          global_zoom_out                 - Zoom out every terminal across every workspace
+          global_zoom_reset               - Reset every terminal back to the base font size
+          global_zoom_status              - JSON snapshot of delta + per-surface font sizes
 
         Input commands:
           send <text>                     - Send text to current terminal

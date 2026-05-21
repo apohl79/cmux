@@ -1008,6 +1008,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
 
         claimAuthCallbackURLSchemes()
 
+        // Install the global terminal zoom controller's surface-ready observer
+        // so newly-created surfaces inherit the persisted zoom level.
+        GlobalTerminalZoomController.shared.start()
+
         // Install the Feed (workstream) store. Separate from the transport
         // wiring: the store is a plain singleton here, and the socket
         // `feed.*` V2 verbs in `TerminalController` push into it directly
@@ -11624,6 +11628,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         // Flash the currently focused panel so the user can visually confirm focus.
         if matchConfiguredShortcut(event: event, action: .triggerFlash) {
             tabManager?.triggerFocusFlash()
+            return true
+        }
+
+        // Global terminal zoom: applies to every terminal pane across every workspace.
+        if matchConfiguredShortcut(event: event, action: .globalTerminalZoomIn) {
+            _ = GlobalTerminalZoomController.shared.zoomIn()
+            return true
+        }
+        if matchConfiguredShortcut(event: event, action: .globalTerminalZoomOut) {
+            _ = GlobalTerminalZoomController.shared.zoomOut()
+            return true
+        }
+        if matchConfiguredShortcut(event: event, action: .globalTerminalZoomReset) {
+            _ = GlobalTerminalZoomController.shared.zoomReset()
             return true
         }
 

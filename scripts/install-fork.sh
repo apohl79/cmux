@@ -8,6 +8,7 @@
 #   ./scripts/install-fork.sh --skip-deps    # skip Homebrew/submodule preflight
 #   ./scripts/install-fork.sh --target ~/Applications/cmux.app
 #   ./scripts/install-fork.sh --arch x86_64  # override host arch detection (default: uname -m)
+#   ./scripts/install-fork.sh --debug        # build Debug instead of Release, install to /Applications/cmux-debug.app
 #   APP_NAME=cmux-foo ./scripts/install-fork.sh
 #
 # Requirements:
@@ -43,12 +44,14 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 cd "$PROJECT_DIR"
 
 APP_NAME="${APP_NAME:-cmux}"
-TARGET="/Applications/${APP_NAME}.app"
+TARGET=""
 SKIP_BUILD=0
 SKIP_DEPS=0
-DERIVED_DATA="${DERIVED_DATA:-$PROJECT_DIR/build/release}"
-SOURCE_APP="${SOURCE_APP:-$DERIVED_DATA/Build/Products/Release/cmux.app}"
+DEBUG_BUILD=0
+DERIVED_DATA=""
+SOURCE_APP="${SOURCE_APP:-}"
 ARCH="${ARCH:-$(uname -m)}"
+DEBUG_BUNDLE_ID_SUFFIX="installed"
 
 # Homebrew formulae the build needs at exact versions.
 BREW_FORMULAE=(zig@0.15)
@@ -57,6 +60,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --skip-build) SKIP_BUILD=1; shift ;;
     --skip-deps) SKIP_DEPS=1; shift ;;
+    --debug) DEBUG_BUILD=1; shift ;;
     --target) TARGET="$2"; shift 2 ;;
     --source) SOURCE_APP="$2"; shift 2 ;;
     --arch) ARCH="$2"; shift 2 ;;
@@ -70,6 +74,28 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+if [[ "$DEBUG_BUILD" == "1" ]]; then
+  CONFIGURATION="Debug"
+  DERIVED_DATA="${DERIVED_DATA:-$PROJECT_DIR/build/debug}"
+  # Build under a distinct bundle id so the installed Debug app:
+  #   - doesn't collide with developer reload.sh tagged builds, and
+  #   - bypasses cmuxApp.shouldBlockUntaggedDebugLaunch (which only fires
+  #     when the bundle id is exactly com.cmuxterm.app.debug).
+  DEBUG_BUNDLE_ID="com.cmuxterm.app.debug.${DEBUG_BUNDLE_ID_SUFFIX}"
+  # Don't override PRODUCT_NAME globally — xcodebuild applies it to every
+  # target (PostHog_PostHog.bundle, swift-crypto_Crypto.bundle, …) and the
+  # resulting name collision fails the build with "duplicate output file".
+  # Keep the scheme's default "cmux DEV" product name and rename only at
+  # install time via the TARGET path.
+  SOURCE_APP="${SOURCE_APP:-$DERIVED_DATA/Build/Products/Debug/cmux DEV.app}"
+  TARGET="${TARGET:-/Applications/cmux-debug.app}"
+else
+  CONFIGURATION="Release"
+  DERIVED_DATA="${DERIVED_DATA:-$PROJECT_DIR/build/release}"
+  SOURCE_APP="${SOURCE_APP:-$DERIVED_DATA/Build/Products/Release/cmux.app}"
+  TARGET="${TARGET:-/Applications/${APP_NAME}.app}"
+fi
 
 log() { printf '==> %s\n' "$*"; }
 
@@ -126,17 +152,28 @@ fi
 
 # ---------- Build (unless skipped) -------------------------------------------
 if [[ "$SKIP_BUILD" == "0" ]]; then
-  log "building Release ($ARCH) into $DERIVED_DATA"
-  xcodebuild \
-    -project GhosttyTabs.xcodeproj \
-    -scheme cmux \
-    -configuration Release \
-    -derivedDataPath "$DERIVED_DATA" \
-    -destination "platform=macOS,arch=$ARCH" \
-    ARCHS="$ARCH" \
-    ONLY_ACTIVE_ARCH=YES \
-    CODE_SIGNING_ALLOWED=NO \
-    build >/tmp/install-fork-build.log 2>&1 || {
+  XCODE_BUILD_ARGS=(
+    -project GhosttyTabs.xcodeproj
+    -scheme cmux
+    -configuration "$CONFIGURATION"
+    -derivedDataPath "$DERIVED_DATA"
+    -destination "platform=macOS,arch=$ARCH"
+    ARCHS="$ARCH"
+    ONLY_ACTIVE_ARCH=YES
+    CODE_SIGNING_ALLOWED=NO
+  )
+  if [[ "$DEBUG_BUILD" == "1" ]]; then
+    # Override only the bundle id (suffixed) and CFBundle display strings.
+    # PRODUCT_NAME is intentionally left alone — see SOURCE_APP comment above.
+    XCODE_BUILD_ARGS+=(
+      PRODUCT_BUNDLE_IDENTIFIER="$DEBUG_BUNDLE_ID"
+      INFOPLIST_KEY_CFBundleName="cmux-debug"
+      INFOPLIST_KEY_CFBundleDisplayName="cmux-debug"
+    )
+  fi
+  XCODE_BUILD_ARGS+=(build)
+  log "building $CONFIGURATION ($ARCH) into $DERIVED_DATA"
+  xcodebuild "${XCODE_BUILD_ARGS[@]}" >/tmp/install-fork-build.log 2>&1 || {
       echo "error: build failed. tail of /tmp/install-fork-build.log:" >&2
       tail -30 /tmp/install-fork-build.log >&2
       exit 1
@@ -197,7 +234,8 @@ log "removing com.apple.quarantine attribute"
 xattr -dr com.apple.quarantine "$TARGET" 2>/dev/null || true
 
 # ---------- Verify -----------------------------------------------------------
-binary="$TARGET/Contents/MacOS/cmux"
+bundle_executable="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$TARGET/Contents/Info.plist" 2>/dev/null || echo cmux)"
+binary="$TARGET/Contents/MacOS/$bundle_executable"
 if [[ ! -x "$binary" ]]; then
   echo "error: installed binary is not executable: $binary" >&2
   exit 1

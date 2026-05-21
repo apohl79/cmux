@@ -9104,42 +9104,34 @@ class GhosttyNSView: NSView, NSUserInterfaceValidations {
                 systemSymbolName: "arrow.up.right.square",
                 accessibilityDescription: nil
             )
-            if BrowserAvailabilitySettings.isEnabled(),
-               terminalSurface != nil,
-               tabId != nil {
-                let placement = BrowserLinkOpenSettings.terminalLinkPlacement()
-                let overrideItem: NSMenuItem
-                switch placement {
-                case .split:
-                    overrideItem = menu.addItem(
-                        withTitle: String(
-                            localized: "terminalContextMenu.openLinkInCurrentPane",
-                            defaultValue: "Open Link in Current Pane"
-                        ),
-                        action: #selector(openHoveredLinkInCurrentPane(_:)),
-                        keyEquivalent: ""
-                    )
-                    overrideItem.image = NSImage(
-                        systemSymbolName: "rectangle.stack",
-                        accessibilityDescription: nil
-                    )
-                case .newSurface:
-                    overrideItem = menu.addItem(
-                        withTitle: String(
-                            localized: "terminalContextMenu.openLinkInNewSplitPane",
-                            defaultValue: "Open Link in New Split Pane"
-                        ),
-                        action: #selector(openHoveredLinkInNewSplitPane(_:)),
-                        keyEquivalent: ""
-                    )
-                    overrideItem.image = NSImage(
-                        systemSymbolName: "rectangle.righthalf.inset.filled",
-                        accessibilityDescription: nil
-                    )
-                }
-                overrideItem.target = self
-                overrideItem.representedObject = url
-            }
+            let openInCurrentPaneItem = menu.addItem(
+                withTitle: String(
+                    localized: "terminalContextMenu.openLinkInCurrentPane",
+                    defaultValue: "Open Link in Current Pane"
+                ),
+                action: #selector(openHoveredLinkInCurrentPane(_:)),
+                keyEquivalent: ""
+            )
+            openInCurrentPaneItem.target = self
+            openInCurrentPaneItem.representedObject = url
+            openInCurrentPaneItem.image = NSImage(
+                systemSymbolName: "rectangle.stack",
+                accessibilityDescription: nil
+            )
+            let openInNewSplitItem = menu.addItem(
+                withTitle: String(
+                    localized: "terminalContextMenu.openLinkInNewSplitPane",
+                    defaultValue: "Open Link in New Split Pane"
+                ),
+                action: #selector(openHoveredLinkInNewSplitPane(_:)),
+                keyEquivalent: ""
+            )
+            openInNewSplitItem.target = self
+            openInNewSplitItem.representedObject = url
+            openInNewSplitItem.image = NSImage(
+                systemSymbolName: "rectangle.righthalf.inset.filled",
+                accessibilityDescription: nil
+            )
             menu.addItem(.separator())
         }
         if onTriggerFlash != nil {

@@ -136,6 +136,9 @@ export const shortcutCategories: ShortcutCategory[] = [
       { id: "splitBrowserDown", combos: [["⌥", "⌘", "⇧", "D"]], description: { en: "Split browser down", ja: "下にブラウザ分割" } },
       { id: "toggleSplitZoom", combos: [["⌘", "⇧", "↩"]], description: { en: "Toggle pane zoom", ja: "ペインズームを切り替え" } },
       { id: "equalizeSplits", combos: [["⌃", "⌘", "="]], description: { en: "Equalize split sizes", ja: "分割サイズを均等にする" } },
+      { id: "globalTerminalZoomIn", combos: [["⌥", "⌘", "="]], description: { en: "Zoom in every terminal across every workspace", ja: "すべてのワークスペースのターミナルを拡大" } },
+      { id: "globalTerminalZoomOut", combos: [["⌥", "⌘", "-"]], description: { en: "Zoom out every terminal across every workspace", ja: "すべてのワークスペースのターミナルを縮小" } },
+      { id: "globalTerminalZoomReset", combos: [["⌥", "⌘", "0"]], description: { en: "Reset every terminal back to the base font size", ja: "すべてのターミナルを既定のフォントサイズに戻す" } },
     ],
   },
   {

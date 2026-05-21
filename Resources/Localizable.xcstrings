@@ -104265,6 +104265,57 @@
         }
       }
     },
+    "terminalContextMenu.openLinkInDefaultBrowser": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open Link in Default Browser"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "デフォルトブラウザでリンクを開く"
+          }
+        }
+      }
+    },
+    "terminalContextMenu.openLinkInCurrentPane": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open Link in Current Pane"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "現在のペインでリンクを開く"
+          }
+        }
+      }
+    },
+    "terminalContextMenu.openLinkInNewSplitPane": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open Link in New Split Pane"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新しい分割ペインでリンクを開く"
+          }
+        }
+      }
+    },
     "alert.cancel": {
       "extractionState": "manual",
       "localizations": {

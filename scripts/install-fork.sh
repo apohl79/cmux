@@ -135,6 +135,16 @@ if [[ "$SKIP_BUILD" == "0" ]]; then
     echo "error: xcodebuild not found. Install Xcode." >&2
     exit 1
   fi
+
+  # Xcode 26 ships the Metal shader compiler as a separately downloadable
+  # component. Without it, Ghostty's metallib build phase fails with
+  # "cannot execute tool 'metal' due to missing Metal Toolchain". Probe for
+  # it and fetch it on demand (~700 MB, one time).
+  if ! xcrun -sdk macosx metal --version >/dev/null 2>&1; then
+    log "Metal Toolchain missing — downloading (xcodebuild -downloadComponent MetalToolchain)"
+    xcodebuild -downloadComponent MetalToolchain
+  fi
+
   zig_version="$(zig version 2>/dev/null || true)"
   if [[ "$zig_version" != 0.15.* ]]; then
     if [[ -x /opt/homebrew/opt/zig@0.15/bin/zig ]]; then
@@ -148,6 +158,13 @@ if [[ "$SKIP_BUILD" == "0" ]]; then
     echo "       brew install zig@0.15" >&2
     exit 1
   fi
+
+  # Ensure GhosttyKit.xcframework exists before xcodebuild. The Xcode project
+  # links it as a dependency, so it must be present when the build graph is
+  # constructed — a Run Script phase can't create it in time. ensure-ghosttykit
+  # downloads a checksum-pinned prebuilt or builds it from the ghostty submodule.
+  log "ensuring GhosttyKit.xcframework (scripts/ensure-ghosttykit.sh)"
+  "$SCRIPT_DIR/ensure-ghosttykit.sh"
 fi
 
 # ---------- Build (unless skipped) -------------------------------------------

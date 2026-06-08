@@ -1655,6 +1655,27 @@ private final class GhosttySurfaceCallbackContext {
     }
 }
 
+private enum GhosttySurfaceTeardownQueue {
+    private static let queue = DispatchQueue(label: "com.cmux.ghostty.surface-teardown", qos: .utility)
+
+    static func enqueue(
+        _ surface: ghostty_surface_t,
+        callbackContext: Unmanaged<GhosttySurfaceCallbackContext>?,
+        completionOnMain: (() -> Void)? = nil
+    ) {
+        // ghostty_surface_free synchronously joins Ghostty renderer/io threads and can stall
+        // in renderer teardown. Keep that wait off the main actor while preserving serialized
+        // access to Ghostty's embedded app surface list.
+        queue.async {
+            ghostty_surface_free(surface)
+            DispatchQueue.main.async {
+                callbackContext?.release()
+                completionOnMain?()
+            }
+        }
+    }
+}
+
 // Minimal Ghostty wrapper for terminal rendering
 // This uses libghostty (GhosttyKit.xcframework) for actual terminal emulation
 
@@ -4925,12 +4946,7 @@ final class TerminalSurface: Identifiable, ObservableObject {
         }
 #endif
 
-        Task { @MainActor in
-            // Keep free behavior aligned with deinit: perform the runtime teardown on
-            // the next main-actor turn so SIGHUP delivery is deterministic but non-reentrant.
-            ghostty_surface_free(surfaceToFree)
-            callbackContext?.release()
-        }
+        GhosttySurfaceTeardownQueue.enqueue(surfaceToFree, callbackContext: callbackContext)
     }
 
 #if DEBUG
@@ -6045,12 +6061,10 @@ final class TerminalSurface: Identifiable, ObservableObject {
         )
 #endif
 
-        // Keep teardown asynchronous to avoid re-entrant close/deinit loops, but retain
-        // callback userdata until surface free completes so callbacks never dereference
-        // a deallocated view pointer.
-        Task { @MainActor in
-            ghostty_surface_free(surfaceToFree)
-            callbackContext?.release()
+        // Keep teardown asynchronous to avoid re-entrant close/deinit loops and main-thread
+        // stalls, but retain callback userdata until surface free completes so callbacks
+        // never dereference a deallocated view pointer.
+        GhosttySurfaceTeardownQueue.enqueue(surfaceToFree, callbackContext: callbackContext) {
 #if DEBUG
             cmuxDebugLog(
                 "surface.lifecycle.deinit.end surface=\(surfaceToken) " +

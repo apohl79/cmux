@@ -9,6 +9,8 @@
 #   ./scripts/install-fork.sh --target ~/Applications/cmux.app
 #   ./scripts/install-fork.sh --arch x86_64  # override host arch detection (default: uname -m)
 #   ./scripts/install-fork.sh --debug        # build Debug instead of Release, install to /Applications/cmux-debug.app
+#   ./scripts/install-fork.sh --sign "Developer ID Application: Name (TEAMID)"  # sign with a specific identity
+#   ./scripts/install-fork.sh --adhoc        # force ad-hoc signing even if a Developer ID cert exists
 #   APP_NAME=cmux-foo ./scripts/install-fork.sh
 #
 # Requirements:
@@ -28,14 +30,18 @@
 #      symlinks, and HFS metadata).
 #   5. Chowns the installed app to the invoking user.
 #   6. Strips com.apple.FinderInfo / resource forks (codesign rejects them).
-#   7. Depth-first ad-hoc codesigns nested bundles (Frameworks/, PlugIns/)
-#      then the outer bundle, so the resource manifest stays valid.
+#   7. Depth-first codesigns nested bundles (Frameworks/, PlugIns/) then the
+#      outer bundle, so the resource manifest stays valid. Uses a Developer ID
+#      Application identity if one is in the keychain (a stable identity macOS
+#      TCC/Gatekeeper key on, so the "access data from other apps" prompt and
+#      other per-app grants persist across reinstalls); falls back to ad-hoc.
 #   8. Strips the com.apple.quarantine xattr so first launch isn't blocked.
 #   9. Verifies the installed binary is executable and reports the bundle id + path.
 #
-# Note: ad-hoc signing is only safe for a personal/local fork. Don't redistribute
-# the resulting app — it has no Developer ID signature and won't pass Gatekeeper
-# on other Macs.
+# Note: ad-hoc signing (no Developer ID cert / --adhoc) is only safe for a
+# personal/local fork. A Developer ID signature here is NOT notarized either, so
+# neither will pass Gatekeeper first-launch on other Macs — the point of signing
+# with Developer ID is a stable local identity, not redistribution.
 
 set -euo pipefail
 
@@ -53,6 +59,12 @@ SOURCE_APP="${SOURCE_APP:-}"
 ARCH="${ARCH:-$(uname -m)}"
 DEBUG_BUNDLE_ID_SUFFIX="installed"
 
+# Code signing identity for the installed app. Empty = auto-detect a
+# "Developer ID Application" cert from the keychain (falls back to ad-hoc "-").
+# Override with --sign "<identity>" / SIGN_IDENTITY=..., or force ad-hoc via --adhoc.
+SIGN_IDENTITY="${SIGN_IDENTITY:-}"
+FORCE_ADHOC=0
+
 # Homebrew formulae the build needs at exact versions.
 BREW_FORMULAE=(zig@0.15)
 
@@ -64,6 +76,8 @@ while [[ $# -gt 0 ]]; do
     --target) TARGET="$2"; shift 2 ;;
     --source) SOURCE_APP="$2"; shift 2 ;;
     --arch) ARCH="$2"; shift 2 ;;
+    --sign) SIGN_IDENTITY="$2"; shift 2 ;;
+    --adhoc) FORCE_ADHOC=1; shift ;;
     -h|--help)
       awk '/^set -euo pipefail/{exit} /^#!/{next} /^#( |$)/{sub(/^# ?/, ""); print}' "$0"
       exit 0
@@ -106,6 +120,22 @@ case "$ARCH" in
     exit 2
     ;;
 esac
+
+# ---------- Resolve signing identity -----------------------------------------
+# Prefer a Developer ID Application cert so macOS keys TCC/Gatekeeper grants on a
+# stable identity (per-app permissions survive reinstalls). Fall back to ad-hoc.
+if [[ "$FORCE_ADHOC" == "1" ]]; then
+  SIGN_IDENTITY="-"
+elif [[ -z "$SIGN_IDENTITY" ]]; then
+  SIGN_IDENTITY="$(security find-identity -v -p codesigning 2>/dev/null \
+    | awk -F'"' '/Developer ID Application/{print $2; exit}')"
+  SIGN_IDENTITY="${SIGN_IDENTITY:--}"
+fi
+if [[ "$SIGN_IDENTITY" == "-" ]]; then
+  log "code signing: ad-hoc (no Developer ID identity found)"
+else
+  log "code signing: $SIGN_IDENTITY"
+fi
 
 # ---------- Homebrew + submodule preflight -----------------------------------
 if [[ "$SKIP_DEPS" == "0" ]]; then
@@ -230,20 +260,26 @@ fi
 log "stripping extended attributes from $TARGET"
 xattr -cr "$TARGET" 2>/dev/null || true
 
-log "ad-hoc codesigning nested bundles"
+sign_args=(--force --sign "$SIGN_IDENTITY")
+if [[ "$SIGN_IDENTITY" != "-" ]]; then
+  # Secure timestamp for a real identity; ad-hoc has no cert to timestamp.
+  sign_args+=(--timestamp)
+fi
+
+log "codesigning nested bundles"
 while IFS= read -r nested; do
-  codesign --force --sign - "$nested" >/dev/null 2>&1 || true
+  codesign "${sign_args[@]}" "$nested" >/dev/null 2>&1 || true
 done < <(find "$TARGET/Contents/Frameworks" "$TARGET/Contents/PlugIns" \
   -mindepth 1 -maxdepth 4 -type d \
-  \( -name "*.framework" -o -name "*.appex" -o -name "*.app" -o -name "*.bundle" \) \
+  \( -name "*.framework" -o -name "*.appex" -o -name "*.app" -o -name "*.bundle" -o -name "*.xpc" \) \
   2>/dev/null | sort -r)
 
-log "ad-hoc codesigning $TARGET"
-codesign --force --deep --sign - "$TARGET" >/dev/null 2>&1 || {
+log "codesigning $TARGET"
+codesign "${sign_args[@]}" --deep "$TARGET" >/dev/null 2>&1 || {
   echo "warning: codesign failed; the app may not launch on a hardened-runtime system" >&2
 }
 
-if ! codesign --verify --deep "$TARGET" >/dev/null 2>&1; then
+if ! codesign --verify --deep --strict "$TARGET" >/dev/null 2>&1; then
   echo "warning: codesign --verify failed for $TARGET" >&2
 fi
 
@@ -266,6 +302,7 @@ log "installed:"
 echo "  path:       $TARGET"
 echo "  bundle id:  $bundle_id"
 echo "  version:    $short_version ($build_version)"
+echo "  signed by:  $([[ "$SIGN_IDENTITY" == "-" ]] && echo "ad-hoc" || echo "$SIGN_IDENTITY")"
 echo
 log "to launch:"
 echo "  open \"$TARGET\""

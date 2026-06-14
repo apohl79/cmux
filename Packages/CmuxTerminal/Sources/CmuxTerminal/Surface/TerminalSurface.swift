@@ -499,11 +499,9 @@ public final class TerminalSurface: Identifiable, ObservableObject {
             workspaceId: tabId,
             reason: "deinit",
             surface: surfaceToFree,
-            callbackContext: callbackContext
+            callbackContext: callbackContext,
+            teeLease: teeLease
         )
-        // The teardown coordinator releases callbackContext; teeLease is not
-        // transported through the request, so release it here (mirrors teardownSurface).
-        teeLease?.release()
     }
 }
 

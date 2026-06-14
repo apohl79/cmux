@@ -254,22 +254,21 @@ extension TerminalSurface {
                 reason: "teardown",
                 surface: surfaceToFree,
                 callbackContext: callbackContext,
+                teeLease: teeLease,
                 freeSurface: freeSurface
             )
-            // The teardown coordinator releases callbackContext; teeLease is not
-            // transported through the request, so release it here.
-            teeLease?.release()
             return
         }
 #endif
 
-        Task { @MainActor in
-            // Keep free behavior aligned with deinit: perform the runtime teardown on
-            // the next main-actor turn so SIGHUP delivery is deterministic but non-reentrant.
-            ghostty_surface_free(surfaceToFree)
-            callbackContext?.release()
-            teeLease?.release()
-        }
+        runtimeTeardown.enqueueRuntimeTeardown(
+            id: id,
+            workspaceId: tabId,
+            reason: "teardown",
+            surface: surfaceToFree,
+            callbackContext: callbackContext,
+            teeLease: teeLease
+        )
     }
 
     /// Frees the runtime surface while keeping the model alive for an
@@ -316,20 +315,21 @@ extension TerminalSurface {
                 reason: reason,
                 surface: surfaceToFree,
                 callbackContext: callbackContext,
+                teeLease: teeLease,
                 freeSurface: freeSurface
             )
-            // The teardown coordinator releases callbackContext; teeLease is not
-            // transported through the request, so release it here.
-            teeLease?.release()
             return
         }
 #endif
 
-        Task { @MainActor in
-            ghostty_surface_free(surfaceToFree)
-            callbackContext?.release()
-            teeLease?.release()
-        }
+        runtimeTeardown.enqueueRuntimeTeardown(
+            id: id,
+            workspaceId: tabId,
+            reason: reason,
+            surface: surfaceToFree,
+            callbackContext: callbackContext,
+            teeLease: teeLease
+        )
     }
 
     /// Marks the resume side of agent hibernation and primes the next runtime

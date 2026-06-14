@@ -31,6 +31,9 @@ public actor TerminalSurfaceRuntimeTeardownCoordinator {
     ///     main-thread owner state.
     ///   - callbackContext: The retained callback context released on the
     ///     main actor after the free completes.
+    ///   - teeLease: The retained byte-tee lease released after the free
+    ///     completes so the native tee callback userdata remains valid during
+    ///     `ghostty_surface_free`.
     ///   - freeSurface: The free operation; defaults to
     ///     `ghostty_surface_free`.
     public nonisolated func enqueueRuntimeTeardown(
@@ -39,6 +42,7 @@ public actor TerminalSurfaceRuntimeTeardownCoordinator {
         reason: String,
         surface: ghostty_surface_t,
         callbackContext: Unmanaged<GhosttySurfaceCallbackContext>?,
+        teeLease: (any TerminalByteTeeLease)? = nil,
         freeSurface: @escaping @Sendable (ghostty_surface_t) -> Void = { surface in
             ghostty_surface_free(surface)
         }
@@ -49,6 +53,7 @@ public actor TerminalSurfaceRuntimeTeardownCoordinator {
             reason: reason,
             surface: surface,
             callbackContext: callbackContext,
+            teeLease: teeLease,
             freeSurface: freeSurface
         )
         Task {
@@ -89,12 +94,13 @@ public actor TerminalSurfaceRuntimeTeardownCoordinator {
         )
 #endif
         request.freeSurface(request.surface)
-        if request.callbackContext != nil {
+        if request.callbackContext != nil || request.teeLease != nil {
             // The request is the @unchecked Sendable transport for the
-            // Unmanaged context; release through the request so the @Sendable
+            // retained contexts; release through the request so the @Sendable
             // closure never captures the non-Sendable Unmanaged directly.
             await MainActor.run {
                 request.callbackContext?.release()
+                request.teeLease?.release()
             }
         }
 #if DEBUG

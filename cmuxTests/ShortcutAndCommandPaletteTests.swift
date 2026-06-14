@@ -1945,33 +1945,33 @@ final class UpdateChannelSettingsTests: XCTestCase {
 
 
 final class UpdateSettingsTests: XCTestCase {
-    func testApplyEnablesAutomaticChecksAndDailySchedule() {
+    func testApplyDisablesAutomaticChecksAndUsesConfiguredSchedule() {
         let defaults = makeDefaults()
         UpdateSettings().apply(to: defaults)
 
-        XCTAssertTrue(defaults.bool(forKey: UpdateSettings.automaticChecksKey))
+        XCTAssertFalse(defaults.bool(forKey: UpdateSettings.automaticChecksKey))
         XCTAssertEqual(defaults.double(forKey: UpdateSettings.scheduledCheckIntervalKey), UpdateSettings().scheduledCheckInterval)
         XCTAssertFalse(defaults.bool(forKey: UpdateSettings.automaticallyUpdateKey))
         XCTAssertFalse(defaults.bool(forKey: UpdateSettings.sendProfileInfoKey))
         XCTAssertTrue(defaults.bool(forKey: UpdateSettings.migrationKey))
     }
 
-    func testApplyRepairsLegacyDisabledAutomaticChecksOnce() {
+    func testApplyDisablesLegacyAutomaticUpdateValuesOnce() {
         let defaults = makeDefaults()
-        defaults.set(false, forKey: UpdateSettings.automaticChecksKey)
+        defaults.set(true, forKey: UpdateSettings.automaticChecksKey)
         defaults.set(0, forKey: UpdateSettings.scheduledCheckIntervalKey)
         defaults.set(true, forKey: UpdateSettings.automaticallyUpdateKey)
 
         UpdateSettings().apply(to: defaults)
 
-        XCTAssertTrue(defaults.bool(forKey: UpdateSettings.automaticChecksKey))
+        XCTAssertFalse(defaults.bool(forKey: UpdateSettings.automaticChecksKey))
         XCTAssertEqual(defaults.double(forKey: UpdateSettings.scheduledCheckIntervalKey), UpdateSettings().scheduledCheckInterval)
-        XCTAssertTrue(defaults.bool(forKey: UpdateSettings.automaticallyUpdateKey))
+        XCTAssertFalse(defaults.bool(forKey: UpdateSettings.automaticallyUpdateKey))
 
-        defaults.set(false, forKey: UpdateSettings.automaticChecksKey)
+        defaults.set(true, forKey: UpdateSettings.automaticChecksKey)
         UpdateSettings().apply(to: defaults)
 
-        XCTAssertFalse(defaults.bool(forKey: UpdateSettings.automaticChecksKey))
+        XCTAssertTrue(defaults.bool(forKey: UpdateSettings.automaticChecksKey))
     }
 
     private func makeDefaults() -> UserDefaults {

@@ -161,6 +161,11 @@ enum KeyboardShortcutSettings {
         case markdownZoomIn
         case markdownZoomOut
         case markdownZoomReset
+
+        // Global terminal zoom: applies to every terminal pane across every workspace.
+        case globalTerminalZoomIn
+        case globalTerminalZoomOut
+        case globalTerminalZoomReset
         case find
         case findInDirectory
         case findNext
@@ -272,6 +277,12 @@ enum KeyboardShortcutSettings {
             case .markdownZoomIn: return String(localized: "shortcut.markdownZoomIn.label", defaultValue: "Markdown Viewer: Zoom In")
             case .markdownZoomOut: return String(localized: "shortcut.markdownZoomOut.label", defaultValue: "Markdown Viewer: Zoom Out")
             case .markdownZoomReset: return String(localized: "shortcut.markdownZoomReset.label", defaultValue: "Markdown Viewer: Actual Size")
+            case .globalTerminalZoomIn:
+                return String(localized: "shortcut.globalTerminalZoomIn.label", defaultValue: "Zoom In All Terminals")
+            case .globalTerminalZoomOut:
+                return String(localized: "shortcut.globalTerminalZoomOut.label", defaultValue: "Zoom Out All Terminals")
+            case .globalTerminalZoomReset:
+                return String(localized: "shortcut.globalTerminalZoomReset.label", defaultValue: "Reset Terminal Zoom")
             case .find: return String(localized: "menu.find.find", defaultValue: "Find…")
             case .findInDirectory: return String(localized: "menu.find.findInDirectory", defaultValue: "Find in Directory…")
             case .findNext: return String(localized: "menu.find.findNext", defaultValue: "Find Next")
@@ -502,6 +513,14 @@ enum KeyboardShortcutSettings {
                 return StoredShortcut(key: "-", command: true, shift: false, option: false, control: false)
             case .markdownZoomReset:
                 return StoredShortcut(key: "0", command: true, shift: false, option: false, control: false)
+            case .globalTerminalZoomIn:
+                // ⌥⌘= matches Ghostty's default zoom-in keycap behavior and
+                // avoids clashing with the browser-specific ⌘+/-/0 zoom set.
+                return StoredShortcut(key: "=", command: true, shift: false, option: true, control: false)
+            case .globalTerminalZoomOut:
+                return StoredShortcut(key: "-", command: true, shift: false, option: true, control: false)
+            case .globalTerminalZoomReset:
+                return StoredShortcut(key: "0", command: true, shift: false, option: true, control: false)
             case .find:
                 return StoredShortcut(key: "f", command: true, shift: false, option: false, control: false)
             case .findInDirectory:

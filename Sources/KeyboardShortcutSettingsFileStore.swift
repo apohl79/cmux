@@ -1010,6 +1010,13 @@ final class CmuxSettingsFileStore {
         if let value = jsonBool(section["openTerminalLinksInCmuxBrowser"]) {
             snapshot.managedUserDefaults[BrowserLinkOpenSettings.openTerminalLinksInCmuxBrowserKey] = .bool(value)
         }
+        if let raw = jsonString(section["terminalLinkPlacement"]) {
+            guard let placement = BrowserTerminalLinkPlacement(rawValue: raw) else {
+                logInvalid("browser.terminalLinkPlacement", sourcePath: sourcePath)
+                return
+            }
+            snapshot.managedUserDefaults[BrowserLinkOpenSettings.terminalLinkPlacementKey] = .string(placement.rawValue)
+        }
         if let value = jsonBool(section["interceptTerminalOpenCommandInCmuxBrowser"]) {
             snapshot.managedUserDefaults[BrowserLinkOpenSettings.interceptTerminalOpenCommandInCmuxBrowserKey] = .bool(value)
         }

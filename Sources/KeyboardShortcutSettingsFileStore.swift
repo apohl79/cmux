@@ -526,6 +526,15 @@ final class CmuxSettingsFileStore {
                 snapshot.managedUserDefaults[PaneDividerColorSettings.darkHexKey] = .nullableString(value)
             }
         }
+        if let raw = section["paneDividerThickness"], !(raw is NSNull) {
+            if let value = jsonInt(raw),
+               CGFloat(value) >= PaneDividerThicknessSettings.minPoints,
+               CGFloat(value) <= PaneDividerThicknessSettings.maxPoints {
+                snapshot.managedUserDefaults[PaneDividerThicknessSettings.key] = .double(Double(value))
+            } else {
+                logInvalid("app.paneDividerThickness", sourcePath: sourcePath)
+            }
+        }
     }
 
     private func parseNotificationsSection(
@@ -1028,13 +1037,6 @@ final class CmuxSettingsFileStore {
         if let value = jsonBool(section["openTerminalLinksInCmuxBrowser"]) {
             snapshot.managedUserDefaults[BrowserLinkOpenSettings.openTerminalLinksInCmuxBrowserKey] = .bool(value)
         }
-        if let raw = jsonString(section["terminalLinkPlacement"]) {
-            guard let placement = BrowserTerminalLinkPlacement(rawValue: raw) else {
-                logInvalid("browser.terminalLinkPlacement", sourcePath: sourcePath)
-                return
-            }
-            snapshot.managedUserDefaults[BrowserLinkOpenSettings.terminalLinkPlacementKey] = .string(placement.rawValue)
-        }
         if let value = jsonBool(section["interceptTerminalOpenCommandInCmuxBrowser"]) {
             snapshot.managedUserDefaults[BrowserLinkOpenSettings.interceptTerminalOpenCommandInCmuxBrowserKey] = .bool(value)
         }
@@ -1255,11 +1257,20 @@ final class CmuxSettingsFileStore {
             return .some(nil)
         }
         guard let raw = jsonString(rawValue),
-              let normalized = WorkspaceTabColorSettings.normalizedHex(raw) else {
+              let normalized = Self.normalizedNullableHex(raw) else {
             logInvalid(path, sourcePath: sourcePath)
             return nil
         }
         return .some(normalized)
+    }
+
+    private static func normalizedNullableHex(_ raw: String) -> String? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let body = trimmed.hasPrefix("#") ? String(trimmed.dropFirst()) : trimmed
+        guard body.count == 6 || body.count == 8 else { return nil }
+        guard UInt64(body, radix: 16) != nil else { return nil }
+        return "#" + body.uppercased()
     }
 
     private func applyManagedSettings(

@@ -151,6 +151,24 @@ public struct AppCatalogSection: SettingCatalogSection {
         userDefaultsKey: "commandPalette.switcherSearchAllSurfaces"
     )
 
+    public let paneDividerColorLightHex = DefaultsKey<String>(
+        id: "app.paneDividerColorLight",
+        defaultValue: "",
+        userDefaultsKey: "paneDividerHexLight"
+    )
+
+    public let paneDividerColorDarkHex = DefaultsKey<String>(
+        id: "app.paneDividerColorDark",
+        defaultValue: "",
+        userDefaultsKey: "paneDividerHexDark"
+    )
+
+    public let paneDividerThickness = DefaultsKey<Double>(
+        id: "app.paneDividerThickness",
+        defaultValue: 1,
+        userDefaultsKey: "paneDividerThicknessPoints"
+    )
+
     public let fileDropDefaultBehavior = DefaultsKey<FileDropDefaultBehavior>(
         id: "app.fileDropDefaultBehavior",
         defaultValue: .text,

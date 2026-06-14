@@ -224,6 +224,7 @@
 		C0DE46010000000000000001 /* CMUXInstalledExtensionSidebarHostView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE46010000000000000002 /* CMUXInstalledExtensionSidebarHostView.swift */; };
 		C19C5E0300000000000000A3 /* CmuxIPCService in Frameworks */ = {isa = PBXBuildFile; productRef = C19C5E0200000000000000A2 /* CmuxIPCService */; };
 		A11EAB000000000000000010 /* PaneDividerColorSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = A11EAB000000000000000011 /* PaneDividerColorSettings.swift */; };
+		A11EAB000000000000000020 /* PaneDividerThicknessSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = A11EAB000000000000000021 /* PaneDividerThicknessSettings.swift */; };
 		E7E00000000000000000000B /* CmuxLifecycleEventPublishing.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7E00000000000000000000C /* CmuxLifecycleEventPublishing.swift */; };
 		2F0C07000000000000000002 /* CmuxMainWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F0C07000000000000000001 /* CmuxMainWindow.swift */; };
 		799F1BEF876006EEB8CD1035 /* CMUXMobileCore in Frameworks */ = {isa = PBXBuildFile; productRef = EFB18E3B3099DFE2ECA3C263 /* CMUXMobileCore */; };
@@ -1133,6 +1134,7 @@
 		A9F100000000000000000007 /* CmuxRuntimeDebugCaptureSequence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CmuxRuntimeDebugCaptureSequence.swift; sourceTree = "<group>"; };
 		D3610C010000000000000002 /* CmuxSettingsJSONPathSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CmuxSettingsJSONPathSupport.swift; sourceTree = "<group>"; };
 		A11EAB000000000000000011 /* PaneDividerColorSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaneDividerColorSettings.swift; sourceTree = "<group>"; };
+		A11EAB000000000000000021 /* PaneDividerThicknessSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaneDividerThicknessSettings.swift; sourceTree = "<group>"; };
 		DC5DC5DC0000000000000002 /* CmuxSidebarActionDispatch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CmuxSidebarActionDispatch.swift; sourceTree = "<group>"; };
 		C0DE46030000000000000002 /* CMUXSidebarExtensionBrowserPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CMUXSidebarExtensionBrowserPanel.swift; sourceTree = "<group>"; };
 		E7E00000000000000000000A /* CmuxSocketEventMapper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CmuxSocketEventMapper.swift; sourceTree = "<group>"; };
@@ -1980,6 +1982,7 @@
 				3023B1013023B1013023B101 /* ConfigSettingsView.swift */,
 				A11EAB000000000000000001 /* AppearanceSettings.swift */,
 				A11EAB000000000000000011 /* PaneDividerColorSettings.swift */,
+				A11EAB000000000000000021 /* PaneDividerThicknessSettings.swift */,
 				A11EAC000000000000000001 /* GhosttyTerminalAppearance.swift */,
 				A11EAD000000000000000001 /* WorkspaceAppearanceResolution.swift */,
 				A5001011 /* cmuxApp.swift */,
@@ -3269,6 +3272,7 @@
 				A9F200000000000000000007 /* CmuxRuntimeDebugCaptureSequence.swift in Sources */,
 				D3610C010000000000000001 /* CmuxSettingsJSONPathSupport.swift in Sources */,
 				A11EAB000000000000000010 /* PaneDividerColorSettings.swift in Sources */,
+				A11EAB000000000000000020 /* PaneDividerThicknessSettings.swift in Sources */,
 				DC5DC5DC0000000000000001 /* CmuxSidebarActionDispatch.swift in Sources */,
 				C0DE46030000000000000001 /* CMUXSidebarExtensionBrowserPanel.swift in Sources */,
 				E7E000000000000000000009 /* CmuxSocketEventMapper.swift in Sources */,

@@ -22,6 +22,19 @@ import Testing
         #expect(translucent.hexString(includeAlpha: true) == "#0000FF7F")
     }
 
+    @Test func eightDigitHexParsesAlphaByte() throws {
+        let color = try #require(NSColor(hex: "#33669980")?.usingColorSpace(.sRGB))
+        var red: CGFloat = 0
+        var green: CGFloat = 0
+        var blue: CGFloat = 0
+        var alpha: CGFloat = 0
+        color.getRed(&red, green: &green, blue: &blue, alpha: &alpha)
+        #expect(abs(red - (CGFloat(0x33) / 255.0)) < 0.001)
+        #expect(abs(green - (CGFloat(0x66) / 255.0)) < 0.001)
+        #expect(abs(blue - (CGFloat(0x99) / 255.0)) < 0.001)
+        #expect(abs(alpha - (CGFloat(0x80) / 255.0)) < 0.001)
+    }
+
     @Test func alphaIsOmittedByDefault() {
         let translucent = NSColor(srgbRed: 0, green: 1, blue: 0, alpha: 0.25)
         #expect(translucent.hexString() == "#00FF00")

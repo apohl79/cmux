@@ -3058,7 +3058,8 @@ final class Workspace: Identifiable, ObservableObject {
             splitButtonTooltips: Self.currentSplitButtonTooltips(),
             enableAnimations: false,
             chromeColors: chromeColors,
-            usesSharedBackdrop: sharesWindowBackdrop
+            usesSharedBackdrop: sharesWindowBackdrop,
+            dividerThickness: PaneDividerThicknessSettings.effectivePoints()
         )
     }
 
@@ -3074,15 +3075,18 @@ final class Workspace: Identifiable, ObservableObject {
             renderingMode: renderingMode
         )
         let nextTabTitleFontSize = config.surfaceTabBarFontSize
+        let nextDividerThickness = PaneDividerThicknessSettings.effectivePoints()
         let currentAppearance = bonsplitController.configuration.appearance
         let currentTabTitleFontSize = currentAppearance.tabTitleFontSize
+        let currentDividerThickness = currentAppearance.dividerThickness
         let colorsChanged = !Self.bonsplitChromeColorsEqual(
             currentAppearance.chromeColors,
             nextChromeColors
         )
         let sharedBackdropChanged = currentAppearance.usesSharedBackdrop != sharesWindowBackdrop
         let fontSizeChanged = abs(currentTabTitleFontSize - nextTabTitleFontSize) > 0.0001
-        let isNoOp = !colorsChanged && !sharedBackdropChanged && !fontSizeChanged
+        let dividerThicknessChanged = currentDividerThickness != nextDividerThickness
+        let isNoOp = !colorsChanged && !sharedBackdropChanged && !fontSizeChanged && !dividerThicknessChanged
 
         if GhosttyApp.shared.backgroundLogEnabled {
             GhosttyApp.shared.logBackground(
@@ -3109,6 +3113,9 @@ final class Workspace: Identifiable, ObservableObject {
         if fontSizeChanged {
             bonsplitController.configuration.appearance.tabTitleFontSize = nextTabTitleFontSize
         }
+        if dividerThicknessChanged {
+            bonsplitController.configuration.appearance.dividerThickness = nextDividerThickness
+        }
 
         if GhosttyApp.shared.backgroundLogEnabled {
             GhosttyApp.shared.logBackground(
@@ -3133,9 +3140,12 @@ final class Workspace: Identifiable, ObservableObject {
         )
         let currentChromeColors = bonsplitController.configuration.appearance.chromeColors
         let currentUsesSharedBackdrop = bonsplitController.configuration.appearance.usesSharedBackdrop
+        let currentDividerThickness = bonsplitController.configuration.appearance.dividerThickness
+        let nextDividerThickness = PaneDividerThicknessSettings.effectivePoints()
         let colorsChanged = !Self.bonsplitChromeColorsEqual(currentChromeColors, nextChromeColors)
         let sharedBackdropChanged = currentUsesSharedBackdrop != sharesWindowBackdrop
-        let isNoOp = !colorsChanged && !sharedBackdropChanged
+        let dividerThicknessChanged = currentDividerThickness != nextDividerThickness
+        let isNoOp = !colorsChanged && !sharedBackdropChanged && !dividerThicknessChanged
 
         if GhosttyApp.shared.backgroundLogEnabled {
             GhosttyApp.shared.logBackground(
@@ -3157,6 +3167,9 @@ final class Workspace: Identifiable, ObservableObject {
         }
         if sharedBackdropChanged {
             bonsplitController.configuration.appearance.usesSharedBackdrop = sharesWindowBackdrop
+        }
+        if dividerThicknessChanged {
+            bonsplitController.configuration.appearance.dividerThickness = nextDividerThickness
         }
         if GhosttyApp.shared.backgroundLogEnabled {
             GhosttyApp.shared.logBackground(

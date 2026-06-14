@@ -1962,6 +1962,7 @@ struct ContentView: View {
     @AppStorage("sidebarMatchTerminalBackground") private var sidebarMatchTerminalBackground = false
     @AppStorage(PaneDividerColorSettings.lightHexKey) private var paneDividerHexLight: String?
     @AppStorage(PaneDividerColorSettings.darkHexKey) private var paneDividerHexDark: String?
+    @AppStorage(PaneDividerThicknessSettings.key) private var paneDividerThicknessRaw: Double = Double(PaneDividerThicknessSettings.defaultPoints)
     @AppStorage("sidebarTintOpacity") private var sidebarTintOpacity = SidebarTintDefaults.opacity
     @AppStorage("sidebarTintHex") private var sidebarTintHex = SidebarTintDefaults.hex
     @AppStorage("sidebarTintHexLight") private var sidebarTintHexLight: String?
@@ -3043,12 +3044,27 @@ struct ContentView: View {
             schedulePortalGeometrySynchronize()
         })
 
+        // Defer chrome reapply with `DispatchQueue.main.async` so the SwiftUI
+        // ColorPicker binding update + redraw cycle can complete before we kick
+        // off `applyWindowBackdropModeForAllTabs` (which iterates every
+        // workspace and reapplies bonsplit chrome - heavy enough to swallow the
+        // very next draw if invoked synchronously inside the binding chain).
         view = AnyView(view.onChange(of: paneDividerHexLight) { _, _ in
-            tabManager.applyWindowBackdropModeForAllTabs(reason: "paneDividerColorChanged")
+            DispatchQueue.main.async {
+                tabManager.applyWindowBackdropModeForAllTabs(reason: "paneDividerColorChanged")
+            }
         })
 
         view = AnyView(view.onChange(of: paneDividerHexDark) { _, _ in
-            tabManager.applyWindowBackdropModeForAllTabs(reason: "paneDividerColorChanged")
+            DispatchQueue.main.async {
+                tabManager.applyWindowBackdropModeForAllTabs(reason: "paneDividerColorChanged")
+            }
+        })
+
+        view = AnyView(view.onChange(of: paneDividerThicknessRaw) { _, _ in
+            DispatchQueue.main.async {
+                tabManager.applyWindowBackdropModeForAllTabs(reason: "paneDividerThicknessChanged")
+            }
         })
 
         view = AnyView(view.onChange(of: isMinimalMode) { _, _ in

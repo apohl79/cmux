@@ -169,6 +169,12 @@ public struct AppCatalogSection: SettingCatalogSection {
         userDefaultsKey: "paneDividerThicknessPoints"
     )
 
+    public let chromeBarHeight = DefaultsKey<Double>(
+        id: "app.chromeBarHeight",
+        defaultValue: 28,
+        userDefaultsKey: "chromeBarHeightPoints"
+    )
+
     public let fileDropDefaultBehavior = DefaultsKey<FileDropDefaultBehavior>(
         id: "app.fileDropDefaultBehavior",
         defaultValue: .text,

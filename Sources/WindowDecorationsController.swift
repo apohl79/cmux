@@ -12,6 +12,12 @@ final class WindowDecorationsController {
         keyOptions: .weakMemory,
         valueOptions: .strongMemory
     )
+    private lazy var trafficLightHoverReveal: TrafficLightHoverRevealController =
+        TrafficLightHoverRevealController { [weak self] window in
+            // Hover state changed in the reveal zone — re-evaluate so the
+            // standard window buttons toggle visibility immediately.
+            self?.apply(to: window)
+        }
 
     deinit {
         let center = NotificationCenter.default
@@ -25,6 +31,7 @@ final class WindowDecorationsController {
         while let view = enumerator?.nextObject() as? NSView {
             view.removeFromSuperview()
         }
+        trafficLightHoverReveal.uninstallAll()
         WindowMouseMovedEventsCoordinator.disableOwner(self)
     }
 
@@ -42,10 +49,55 @@ final class WindowDecorationsController {
         } else {
             WindowMouseMovedEventsCoordinator.disable(for: window, owner: self)
         }
+        let sidebarHiddenReveal = shouldEngageSidebarHiddenTrafficLightReveal(for: window)
+        if sidebarHiddenReveal {
+            trafficLightHoverReveal.install(in: window)
+        } else {
+            trafficLightHoverReveal.uninstall(from: window)
+        }
+        let isHovering = sidebarHiddenReveal && trafficLightHoverReveal.isHovering(in: window)
         let shouldHideButtons = shouldHideTrafficLights(for: window)
+            || (sidebarHiddenReveal && !isHovering)
         hideStandardButtons(on: window, hidden: shouldHideButtons)
         // Native traffic-light frames are AppKit-owned. cmux reads them for layout but never moves them.
+        syncMinimalModeTrafficLightTabBarInsetForReveal(
+            window: window,
+            sidebarHiddenReveal: sidebarHiddenReveal,
+            isHovering: isHovering
+        )
+        #if DEBUG
+        cmuxDebugLog(
+            "tlhover.apply win=\(window.windowNumber) id=\(window.identifier?.rawValue ?? "nil") " +
+            "engageReveal=\(sidebarHiddenReveal) hovering=\(isHovering) hide=\(shouldHideButtons)"
+        )
+        #endif
         applyMinimalModeSidebarTitlebarClickTarget(to: window)
+    }
+
+    /// In minimal mode with the sidebar collapsed, the tab bar normally
+    /// reserves a leading inset for the native traffic-light buttons
+    /// (see `ContentView.syncTrafficLightInset`). When the hover-reveal hides
+    /// those buttons we release the inset so tabs reflow into the freed space,
+    /// and restore the inset on hover so the revealed buttons don't overlap
+    /// any tab content.
+    private func syncMinimalModeTrafficLightTabBarInsetForReveal(
+        window: NSWindow,
+        sidebarHiddenReveal: Bool,
+        isHovering: Bool
+    ) {
+        guard sidebarHiddenReveal else { return }
+        guard WorkspacePresentationModeSettings.isMinimal() else { return }
+        guard !window.styleMask.contains(.fullScreen) else { return }
+        let desiredInset: CGFloat = isHovering
+            ? MinimalModeTitlebarDebugSettings.trafficLightTabBarLeadingInset()
+            : 0
+        MainActor.assumeIsolated {
+            guard let tabManager = AppDelegate.shared?
+                .contextForMainTerminalWindow(window)?
+                .tabManager
+            else { return }
+            tabManager.syncWorkspaceTabBarLeadingInset(desiredInset)
+        }
     }
 
     private func installObservers() {
@@ -59,6 +111,11 @@ final class WindowDecorationsController {
         for name in TitlebarWindowGeometryNotifications.names {
             observers.append(center.addObserver(forName: name, object: nil, queue: .main, using: handler))
         }
+        // Fullscreen transitions don't trigger key/main becomeXxx; re-evaluate
+        // explicitly so the hover-reveal re-engages after the user leaves
+        // fullscreen with the sidebar still collapsed.
+        observers.append(center.addObserver(forName: NSWindow.didExitFullScreenNotification, object: nil, queue: .main, using: handler))
+        observers.append(center.addObserver(forName: NSWindow.didEnterFullScreenNotification, object: nil, queue: .main, using: handler))
         observers.append(center.addObserver(forName: UserDefaults.didChangeNotification, object: nil, queue: .main) { [weak self] _ in
             self?.applyDefaultsDrivenDecorationChangeIfNeeded()
         })
@@ -463,5 +520,47 @@ final class WindowDecorationsController {
             return true
         }
         return false
+    }
+
+    /// True iff the hover-reveal is engaged for `window` AND the cursor is not
+    /// currently in the reveal zone — i.e. the standard NSWindow buttons are
+    /// hidden by this controller right now. Used by ContentView to release the
+    /// minimal-mode tab bar traffic-light inset in lockstep with the buttons.
+    func trafficLightsAreHiddenByReveal(for window: NSWindow) -> Bool {
+        let engaged = shouldEngageSidebarHiddenTrafficLightReveal(for: window)
+        return engaged && !trafficLightHoverReveal.isHovering(in: window)
+    }
+
+    private func shouldEngageSidebarHiddenTrafficLightReveal(for window: NSWindow) -> Bool {
+        let isMain = isMainWorkspaceWindow(window)
+        let isFullScreen = window.styleMask.contains(.fullScreen)
+        guard isMain else {
+            #if DEBUG
+            cmuxDebugLog("tlhover.gate win=\(window.windowNumber) bail=notMain id=\(window.identifier?.rawValue ?? "nil")")
+            #endif
+            return false
+        }
+        guard !isFullScreen else {
+            #if DEBUG
+            cmuxDebugLog("tlhover.gate win=\(window.windowNumber) bail=fullScreen")
+            #endif
+            return false
+        }
+        return MainActor.assumeIsolated {
+            guard let context = AppDelegate.shared?.contextForMainTerminalWindow(window) else {
+                #if DEBUG
+                cmuxDebugLog("tlhover.gate win=\(window.windowNumber) bail=noContext")
+                #endif
+                return false
+            }
+            let visible = context.sidebarState.isVisible
+            let isMinimal = WorkspacePresentationModeSettings.isMinimal()
+            #if DEBUG
+            cmuxDebugLog(
+                "tlhover.gate win=\(window.windowNumber) sidebar.visible=\(visible) minimal=\(isMinimal)"
+            )
+            #endif
+            return visible == false
+        }
     }
 }

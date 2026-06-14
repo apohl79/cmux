@@ -58,6 +58,7 @@ public struct AppSection: View {
     @State private var hideCloseButton: DefaultsValueModel<Bool>
     @State private var renameSelects: DefaultsValueModel<Bool>
     @State private var paletteAllSurfaces: DefaultsValueModel<Bool>
+    @State private var chromeBarHeight: DefaultsValueModel<Double>
 
     @State private var languageAtAppear: AppLanguage?
     @State private var telemetryAtAppear: Bool?
@@ -104,10 +105,24 @@ public struct AppSection: View {
         _hideCloseButton = State(initialValue: DefaultsValueModel(store: defaultsStore, key: catalog.app.hideTabCloseButton))
         _renameSelects = State(initialValue: DefaultsValueModel(store: defaultsStore, key: catalog.app.renameSelectsExistingName))
         _paletteAllSurfaces = State(initialValue: DefaultsValueModel(store: defaultsStore, key: catalog.app.commandPaletteSearchesAllSurfaces))
+        _chromeBarHeight = State(initialValue: DefaultsValueModel(store: defaultsStore, key: catalog.app.chromeBarHeight))
     }
 
     private static let columnWidth: CGFloat = 196
     private static let notificationSoundControlWidth: CGFloat = 280
+    private static let chromeBarHeightRange: ClosedRange<Double> = 20...50
+
+    private var clampedChromeBarHeight: Double {
+        clampChromeBarHeight(chromeBarHeight.current)
+    }
+
+    private var defaultChromeBarHeight: Double {
+        catalog.app.chromeBarHeight.defaultValue
+    }
+
+    private func clampChromeBarHeight(_ value: Double) -> Double {
+        min(max(value.rounded(), Self.chromeBarHeightRange.lowerBound), Self.chromeBarHeightRange.upperBound)
+    }
 
     /// Languages legacy `AppLanguage` exposes (cmuxApp.swift line
     /// 4338). The shared `CmuxSettings.AppLanguage` adds `.vi` for a
@@ -248,6 +263,36 @@ public struct AppSection: View {
                 Toggle("", isOn: Binding(get: { firstClick.current }, set: { firstClick.set($0) }))
                     .labelsHidden()
                     .controlSize(.small)
+            }
+            SettingsCardDivider()
+
+            // Chrome Bar Height
+            SettingsCardRow(
+                configurationReview: .json("app.chromeBarHeight"),
+                String(localized: "settings.app.chromeBarHeight", defaultValue: "Chrome Bar Height"),
+                subtitle: String(localized: "settings.app.chromeBarHeight.subtitle", defaultValue: "Height in points of the workspace tabs titlebar, the per-pane tab bar, and the secondary titlebar.")
+            ) {
+                HStack(spacing: 12) {
+                    Stepper(
+                        value: Binding(
+                            get: { clampedChromeBarHeight },
+                            set: { chromeBarHeight.set(clampChromeBarHeight($0)) }
+                        ),
+                        in: Self.chromeBarHeightRange,
+                        step: 1
+                    ) {
+                        Text("\(Int(clampedChromeBarHeight))pt")
+                            .frame(minWidth: 44, alignment: .leading)
+                            .monospacedDigit()
+                    }
+                    .controlSize(.small)
+                    Button(String(localized: "settings.app.chromeBarHeight.reset", defaultValue: "Reset")) {
+                        chromeBarHeight.reset()
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(Int(clampedChromeBarHeight) == Int(defaultChromeBarHeight))
+                }
             }
             SettingsCardDivider()
 

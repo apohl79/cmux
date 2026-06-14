@@ -3076,9 +3076,11 @@ final class Workspace: Identifiable, ObservableObject {
         )
         let nextTabTitleFontSize = config.surfaceTabBarFontSize
         let nextDividerThickness = PaneDividerThicknessSettings.effectivePoints()
+        let nextTabBarHeight = WindowChromeMetrics.bonsplitTabBarHeight
         let currentAppearance = bonsplitController.configuration.appearance
         let currentTabTitleFontSize = currentAppearance.tabTitleFontSize
         let currentDividerThickness = currentAppearance.dividerThickness
+        let currentTabBarHeight = currentAppearance.tabBarHeight
         let colorsChanged = !Self.bonsplitChromeColorsEqual(
             currentAppearance.chromeColors,
             nextChromeColors
@@ -3086,7 +3088,8 @@ final class Workspace: Identifiable, ObservableObject {
         let sharedBackdropChanged = currentAppearance.usesSharedBackdrop != sharesWindowBackdrop
         let fontSizeChanged = abs(currentTabTitleFontSize - nextTabTitleFontSize) > 0.0001
         let dividerThicknessChanged = currentDividerThickness != nextDividerThickness
-        let isNoOp = !colorsChanged && !sharedBackdropChanged && !fontSizeChanged && !dividerThicknessChanged
+        let tabBarHeightChanged = abs(currentTabBarHeight - nextTabBarHeight) > 0.001
+        let isNoOp = !colorsChanged && !sharedBackdropChanged && !fontSizeChanged && !dividerThicknessChanged && !tabBarHeightChanged
 
         if GhosttyApp.shared.backgroundLogEnabled {
             GhosttyApp.shared.logBackground(
@@ -3116,6 +3119,9 @@ final class Workspace: Identifiable, ObservableObject {
         if dividerThicknessChanged {
             bonsplitController.configuration.appearance.dividerThickness = nextDividerThickness
         }
+        if tabBarHeightChanged {
+            bonsplitController.configuration.appearance.tabBarHeight = nextTabBarHeight
+        }
 
         if GhosttyApp.shared.backgroundLogEnabled {
             GhosttyApp.shared.logBackground(
@@ -3142,10 +3148,13 @@ final class Workspace: Identifiable, ObservableObject {
         let currentUsesSharedBackdrop = bonsplitController.configuration.appearance.usesSharedBackdrop
         let currentDividerThickness = bonsplitController.configuration.appearance.dividerThickness
         let nextDividerThickness = PaneDividerThicknessSettings.effectivePoints()
+        let currentTabBarHeight = bonsplitController.configuration.appearance.tabBarHeight
+        let nextTabBarHeight = WindowChromeMetrics.bonsplitTabBarHeight
         let colorsChanged = !Self.bonsplitChromeColorsEqual(currentChromeColors, nextChromeColors)
         let sharedBackdropChanged = currentUsesSharedBackdrop != sharesWindowBackdrop
         let dividerThicknessChanged = currentDividerThickness != nextDividerThickness
-        let isNoOp = !colorsChanged && !sharedBackdropChanged && !dividerThicknessChanged
+        let tabBarHeightChanged = abs(currentTabBarHeight - nextTabBarHeight) > 0.001
+        let isNoOp = !colorsChanged && !sharedBackdropChanged && !dividerThicknessChanged && !tabBarHeightChanged
 
         if GhosttyApp.shared.backgroundLogEnabled {
             GhosttyApp.shared.logBackground(
@@ -3170,6 +3179,9 @@ final class Workspace: Identifiable, ObservableObject {
         }
         if dividerThicknessChanged {
             bonsplitController.configuration.appearance.dividerThickness = nextDividerThickness
+        }
+        if tabBarHeightChanged {
+            bonsplitController.configuration.appearance.tabBarHeight = nextTabBarHeight
         }
         if GhosttyApp.shared.backgroundLogEnabled {
             GhosttyApp.shared.logBackground(

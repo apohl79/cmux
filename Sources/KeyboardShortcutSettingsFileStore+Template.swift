@@ -85,6 +85,7 @@ extension CmuxSettingsFileStore {
                     "paneDividerColorLight": NSNull(),
                     "paneDividerColorDark": NSNull(),
                     "paneDividerThickness": Int(PaneDividerThicknessSettings.defaultPoints),
+                    "chromeBarHeight": Int(ChromeBarHeightSettings.defaultPoints),
                 ],
             ],
             [

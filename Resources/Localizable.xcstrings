@@ -94057,6 +94057,57 @@
         }
       }
     },
+    "settings.app.chromeBarHeight": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chrome Bar Height"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "クロームバーの高さ"
+          }
+        }
+      }
+    },
+    "settings.app.chromeBarHeight.reset": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reset"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "リセット"
+          }
+        }
+      }
+    },
+    "settings.app.chromeBarHeight.subtitle": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Height in points of the workspace tabs titlebar, the per-pane tab bar, and the secondary titlebar."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ワークスペースタブのタイトルバー、ペインごとのタブバー、セカンダリタイトルバーの高さをポイント単位で指定します。"
+          }
+        }
+      }
+    },
     "settings.app.sidebarBranchLayout": {
       "extractionState": "manual",
       "localizations": {

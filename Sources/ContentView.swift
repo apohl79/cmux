@@ -1963,6 +1963,7 @@ struct ContentView: View {
     @AppStorage(PaneDividerColorSettings.lightHexKey) private var paneDividerHexLight: String?
     @AppStorage(PaneDividerColorSettings.darkHexKey) private var paneDividerHexDark: String?
     @AppStorage(PaneDividerThicknessSettings.key) private var paneDividerThicknessRaw: Double = Double(PaneDividerThicknessSettings.defaultPoints)
+    @AppStorage(ChromeBarHeightSettings.key) private var chromeBarHeightRaw: Double = Double(ChromeBarHeightSettings.defaultPoints)
     @AppStorage("sidebarTintOpacity") private var sidebarTintOpacity = SidebarTintDefaults.opacity
     @AppStorage("sidebarTintHex") private var sidebarTintHex = SidebarTintDefaults.hex
     @AppStorage("sidebarTintHexLight") private var sidebarTintHexLight: String?
@@ -2172,9 +2173,20 @@ struct ContentView: View {
     }
 
     private func syncTrafficLightInset() {
-        let inset: CGFloat = (isMinimalMode && !sidebarState.isVisible && !isFullScreen)
+        let baseInset: CGFloat = (isMinimalMode && !sidebarState.isVisible && !isFullScreen)
             ? CGFloat(titlebarDebugChromeSnapshot.trafficLightTabBarLeadingInset)
             : 0
+        // The hover-reveal hides the native NSWindow buttons while the sidebar
+        // is collapsed; release the reserved tab-bar inset in lockstep so the
+        // tabs reclaim the freed space.
+        let hiddenByReveal: Bool
+        if let observedWindow {
+            hiddenByReveal = AppDelegate.shared?
+                .trafficLightHoverRevealHidesButtons(in: observedWindow) == true
+        } else {
+            hiddenByReveal = false
+        }
+        let inset: CGFloat = hiddenByReveal ? 0 : baseInset
         tabManager.syncWorkspaceTabBarLeadingInset(inset)
     }
 
@@ -3064,6 +3076,16 @@ struct ContentView: View {
         view = AnyView(view.onChange(of: paneDividerThicknessRaw) { _, _ in
             DispatchQueue.main.async {
                 tabManager.applyWindowBackdropModeForAllTabs(reason: "paneDividerThicknessChanged")
+            }
+        })
+
+        view = AnyView(view.onChange(of: chromeBarHeightRaw) { _, _ in
+            // chromeBarHeight feeds bonsplit's per-pane tabBarHeight via
+            // BonsplitConfiguration.Appearance, which is built once per
+            // chrome-apply call. Reapply chrome on change so the per-pane
+            // tab pills resize together with the sidebar/titlebar.
+            DispatchQueue.main.async {
+                tabManager.applyWindowBackdropModeForAllTabs(reason: "chromeBarHeightChanged")
             }
         })
 

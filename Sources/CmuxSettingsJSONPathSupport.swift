@@ -91,6 +91,7 @@ extension CmuxSettingsFileStore {
         "app.paneDividerColorLight",
         "app.paneDividerColorDark",
         "app.paneDividerThickness",
+        "app.chromeBarHeight",
         "workspaceGroups.newWorkspacePlacement",
         "terminal.showScrollBar",
         "terminal.copyOnSelect",

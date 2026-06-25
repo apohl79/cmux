@@ -65,6 +65,14 @@ DEBUG_BUNDLE_ID_SUFFIX="installed"
 SIGN_IDENTITY="${SIGN_IDENTITY:-}"
 FORCE_ADHOC=0
 
+# Entitlements applied to the outer app bundle at re-sign time. The build runs
+# with CODE_SIGNING_ALLOWED=NO, so this re-sign is the only place entitlements
+# take effect. cmux.entitlements carries audio-input/camera plus the JIT/library
+# exceptions and, unlike cmux.release.entitlements, has no hardcoded
+# team-identifier to clash with a fork's Developer ID. Without it, a
+# hardened-runtime build silently blocks the microphone (no TCC prompt).
+APP_ENTITLEMENTS="${APP_ENTITLEMENTS:-cmux.entitlements}"
+
 # Homebrew formulae the build needs at exact versions.
 BREW_FORMULAE=(zig@0.15)
 
@@ -275,7 +283,14 @@ done < <(find "$TARGET/Contents/Frameworks" "$TARGET/Contents/PlugIns" \
   2>/dev/null | sort -r)
 
 log "codesigning $TARGET"
-codesign "${sign_args[@]}" --deep "$TARGET" >/dev/null 2>&1 || {
+app_sign_args=("${sign_args[@]}")
+if [[ -f "$APP_ENTITLEMENTS" ]]; then
+  log "applying app entitlements: $APP_ENTITLEMENTS"
+  app_sign_args+=(--entitlements "$APP_ENTITLEMENTS")
+else
+  echo "warning: app entitlements not found at $APP_ENTITLEMENTS; signing without microphone/camera/JIT entitlements" >&2
+fi
+codesign "${app_sign_args[@]}" --deep "$TARGET" >/dev/null 2>&1 || {
   echo "warning: codesign failed; the app may not launch on a hardened-runtime system" >&2
 }
 

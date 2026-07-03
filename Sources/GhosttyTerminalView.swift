@@ -5424,20 +5424,15 @@ final class TerminalSurface: Identifiable, ObservableObject {
         }
 
         // Some GhosttyKit builds can drop inherited font_size during post-create
-        // config/scale reconciliation. If runtime points don't match the inherited
-        // template points, re-apply via binding action so all creation paths
-        // (new surface, split, new workspace) preserve zoom from the source terminal.
+        // config/scale reconciliation. Re-apply via binding action so all creation
+        // paths (new surface, split, new workspace) preserve zoom from the source
+        // terminal. Do not query the runtime quicklook font here: this runs during
+        // AppKit attachment, and CoreText font-copy calls can fault before the new
+        // renderer font grid has fully settled.
         if let inheritedFontPoints = configTemplate?.fontSize,
            inheritedFontPoints > 0 {
-            let currentFontPoints = cmuxCurrentSurfaceFontSizePoints(createdSurface)
-            let shouldReapply = {
-                guard let currentFontPoints else { return true }
-                return abs(currentFontPoints - inheritedFontPoints) > 0.05
-            }()
-            if shouldReapply {
-                let action = String(format: "set_font_size:%.3f", inheritedFontPoints)
-                _ = performBindingAction(action)
-            }
+            let action = String(format: "set_font_size:%.3f", inheritedFontPoints)
+            _ = performBindingAction(action)
         }
 
         // Re-apply the desired focus state after creation so the live runtime
@@ -5463,12 +5458,15 @@ final class TerminalSurface: Identifiable, ObservableObject {
         )
 
 #if DEBUG
-        let runtimeFontText = cmuxCurrentSurfaceFontSizePoints(createdSurface).map {
-            String(format: "%.2f", $0)
-        } ?? "nil"
+        let inheritedFontText: String
+        if let inheritedFontPoints = configTemplate?.fontSize, inheritedFontPoints > 0 {
+            inheritedFontText = String(format: "%.2f", inheritedFontPoints)
+        } else {
+            inheritedFontText = "nil"
+        }
         cmuxDebugLog(
             "zoom.create.done surface=\(id.uuidString.prefix(5)) context=\(cmuxSurfaceContextName(surfaceContext)) " +
-            "runtimeFont=\(runtimeFontText)"
+            "inheritedFont=\(inheritedFontText)"
         )
 #endif
     }

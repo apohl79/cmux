@@ -153,7 +153,8 @@ struct ConfigSourceEnvironment {
 }
 
 enum CmuxGhosttyConfigPathResolver {
-    static let releaseBundleIdentifier = "com.cmuxterm.app"
+    static let releaseBundleIdentifier = "org.e47.cmuxterm.app"
+    private static let legacyReleaseBundleIdentifier = "com.cmuxterm.app"
     private static let releaseFallbackChannelSuffixes = ["debug", "nightly", "staging"]
 
     static func editableConfigURL(
@@ -190,8 +191,7 @@ enum CmuxGhosttyConfigPathResolver {
         fileManager: FileManager = .default
     ) -> [URL] {
         guard let currentBundleIdentifier, !currentBundleIdentifier.isEmpty else {
-            return preferredExistingConfigURLs(
-                for: releaseBundleIdentifier,
+            return preferredReleaseConfigURLs(
                 appSupportDirectory: appSupportDirectory,
                 fileManager: fileManager
             )
@@ -205,15 +205,11 @@ enum CmuxGhosttyConfigPathResolver {
         if !currentURLs.isEmpty {
             return currentURLs
         }
-        if allowsReleaseFallback(currentBundleIdentifier) {
-            let releaseURLs = preferredExistingConfigURLs(
-                for: releaseBundleIdentifier,
+        if currentBundleIdentifier == releaseBundleIdentifier || allowsReleaseFallback(currentBundleIdentifier) {
+            return preferredReleaseConfigURLs(
                 appSupportDirectory: appSupportDirectory,
                 fileManager: fileManager
             )
-            if !releaseURLs.isEmpty {
-                return releaseURLs
-            }
         }
         return []
     }
@@ -245,6 +241,25 @@ enum CmuxGhosttyConfigPathResolver {
             return [legacyConfig]
         }
         return []
+    }
+
+    private static func preferredReleaseConfigURLs(
+        appSupportDirectory: URL,
+        fileManager: FileManager
+    ) -> [URL] {
+        let releaseURLs = preferredExistingConfigURLs(
+            for: releaseBundleIdentifier,
+            appSupportDirectory: appSupportDirectory,
+            fileManager: fileManager
+        )
+        if !releaseURLs.isEmpty {
+            return releaseURLs
+        }
+        return preferredExistingConfigURLs(
+            for: legacyReleaseBundleIdentifier,
+            appSupportDirectory: appSupportDirectory,
+            fileManager: fileManager
+        )
     }
 
     private static func isNonEmptyConfigFile(_ url: URL, fileManager: FileManager) -> Bool {
@@ -286,8 +301,11 @@ enum CmuxGhosttyConfigPathResolver {
         channelSuffix: String
     ) -> Bool {
         let channelBundleIdentifier = "\(releaseBundleIdentifier).\(channelSuffix)"
+        let legacyChannelBundleIdentifier = "\(legacyReleaseBundleIdentifier).\(channelSuffix)"
         return bundleIdentifier == channelBundleIdentifier
             || bundleIdentifier.hasPrefix("\(channelBundleIdentifier).")
+            || bundleIdentifier == legacyChannelBundleIdentifier
+            || bundleIdentifier.hasPrefix("\(legacyChannelBundleIdentifier).")
     }
 }
 

@@ -22,7 +22,8 @@ final class CmuxSettingsFileStore {
     static let currentSchemaVersion = 1
     static let schemaURLString = "https://raw.githubusercontent.com/manaflow-ai/cmux/main/web/data/cmux.schema.json"
     private static let legacySchemaURLString = "https://raw.githubusercontent.com/manaflow-ai/cmux/main/web/data/cmux-settings.schema.json"
-    private static let releaseBundleIdentifier = "com.cmuxterm.app"
+    private static let releaseBundleIdentifier = "org.e47.cmuxterm.app"
+    private static let legacyReleaseBundleIdentifier = "com.cmuxterm.app"
     private static let backupsDefaultsKey = "cmux.settingsFile.backups.v1"
     private static let importedManagedDefaultsDefaultsKey = "cmux.settingsFile.importedManagedDefaults.v1"
     fileprivate static let socketPasswordBackupIdentifier = "automation.socketPassword"
@@ -50,6 +51,19 @@ final class CmuxSettingsFileStore {
             .path
     }
 
+    static var defaultLegacyApplicationSupportFallbackPath: String? {
+        guard let appSupport = FileManager.default.urls(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask
+        ).first else {
+            return nil
+        }
+        return appSupport
+            .appendingPathComponent(legacyReleaseBundleIdentifier, isDirectory: true)
+            .appendingPathComponent("settings.json", isDirectory: false)
+            .path
+    }
+
     private let primaryPath: String
     private let fallbackPaths: [String]
     private let fileManager: FileManager
@@ -71,7 +85,10 @@ final class CmuxSettingsFileStore {
     init(
         primaryPath: String = CmuxSettingsFileStore.defaultPrimaryPath,
         fallbackPath: String? = CmuxSettingsFileStore.defaultFallbackPath,
-        additionalFallbackPaths: [String] = [CmuxSettingsFileStore.defaultApplicationSupportFallbackPath].compactMap { $0 },
+        additionalFallbackPaths: [String] = [
+            CmuxSettingsFileStore.defaultApplicationSupportFallbackPath,
+            CmuxSettingsFileStore.defaultLegacyApplicationSupportFallbackPath,
+        ].compactMap { $0 },
         fileManager: FileManager = .default,
         notificationCenter: NotificationCenter = .default,
         startWatching: Bool = true

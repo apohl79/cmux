@@ -2164,7 +2164,7 @@ struct CMUXCLI {
     }
 
     private static let browserDisabledDefaultsKey = "browserDisabledOverride"
-    private static let defaultBrowserSettingsDomain = "com.cmuxterm.app"
+    private static let defaultBrowserSettingsDomain = "org.e47.cmuxterm.app"
 
     private static func currentExecutableURL() -> URL? {
         var size: UInt32 = 0

@@ -155,10 +155,19 @@ extension CMUXCLI {
             )
             urls.append(cmuxDirectory.appendingPathComponent("config", isDirectory: false))
             urls.append(cmuxDirectory.appendingPathComponent("config.ghostty", isDirectory: false))
+
+            let legacyCmuxDirectory = appSupportDirectory.appendingPathComponent(
+                Self.legacyCmuxThemeOverrideBundleIdentifier,
+                isDirectory: true
+            )
+            urls.append(legacyCmuxDirectory.appendingPathComponent("config", isDirectory: false))
+            urls.append(legacyCmuxDirectory.appendingPathComponent("config.ghostty", isDirectory: false))
         } else {
             urls.append(configURL("~/Library/Application Support/com.mitchellh.ghostty/config.ghostty"))
             urls.append(configURL("~/Library/Application Support/\(Self.cmuxThemeOverrideBundleIdentifier)/config"))
             urls.append(configURL("~/Library/Application Support/\(Self.cmuxThemeOverrideBundleIdentifier)/config.ghostty"))
+            urls.append(configURL("~/Library/Application Support/\(Self.legacyCmuxThemeOverrideBundleIdentifier)/config"))
+            urls.append(configURL("~/Library/Application Support/\(Self.legacyCmuxThemeOverrideBundleIdentifier)/config.ghostty"))
         }
 
         return urls

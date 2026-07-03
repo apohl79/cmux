@@ -259,7 +259,7 @@ jobs:
           echo "$APPLE_RELEASE_PROVISIONING_PROFILE_BASE64" | base64 --decode > "$TMP_PROFILE"
           security cms -D -i "$TMP_PROFILE" > "$TMP_PLIST"
           APP_ID="$(/usr/libexec/PlistBuddy -c "Print :Entitlements:com.apple.application-identifier" "$TMP_PLIST")"
-          if [ "$APP_ID" != "7WLXT3NR37.com.cmuxterm.app" ]; then
+          if [ "$APP_ID" != "62QZB3NCZR.org.e47.cmuxterm.app" ]; then
             echo "Release provisioning profile targets unexpected app ID: $APP_ID" >&2
             exit 1
           fi

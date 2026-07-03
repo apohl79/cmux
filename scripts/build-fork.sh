@@ -32,6 +32,8 @@ Options:
 Environment:
   NOTARIZE=1 APPLE_ID=... APPLE_TEAM_ID=... APPLE_APP_SPECIFIC_PASSWORD=...
   NOTARYTOOL_PROFILE=cmux-notary ./scripts/build-fork.sh
+  NOTARYTOOL_PROFILE_CANDIDATES="cmux-notary ci-notary" ./scripts/build-fork.sh
+  NOTARYTOOL_KEY=/path/AuthKey.p8 NOTARYTOOL_KEY_ID=... NOTARYTOOL_ISSUER=...
 EOF
 }
 
@@ -60,6 +62,7 @@ SIGN_IDENTITY="${SIGN_IDENTITY:-}"
 FORCE_ADHOC=0
 NOTARIZE="${NOTARIZE:-auto}"
 NOTARYTOOL_PROFILE="${NOTARYTOOL_PROFILE:-}"
+NOTARYTOOL_PROFILE_CANDIDATES="${NOTARYTOOL_PROFILE_CANDIDATES:-${NOTARYTOOL_PROFILES:-}}"
 HELPER_ENTITLEMENTS="${HELPER_ENTITLEMENTS:-cmux-helper.entitlements}"
 
 BREW_FORMULAE=(zig@0.15)
@@ -153,10 +156,111 @@ else
 fi
 
 notarytool_args=()
+NOTARYTOOL_CREDENTIAL_SOURCE=""
+notary_profile_candidates=()
+
+add_notary_profile_candidate() {
+  local candidate="$1"
+  local existing
+
+  [[ -n "$candidate" ]] || return 0
+  if [[ "${#notary_profile_candidates[@]}" -gt 0 ]]; then
+    for existing in "${notary_profile_candidates[@]}"; do
+      [[ "$existing" != "$candidate" ]] || return 0
+    done
+  fi
+  notary_profile_candidates+=("$candidate")
+}
+
+detect_notarytool_profile() {
+  local candidate
+
+  if ! command -v xcrun >/dev/null 2>&1; then
+    return 1
+  fi
+
+  for candidate in "${notary_profile_candidates[@]}"; do
+    if xcrun notarytool history \
+      --keychain-profile "$candidate" \
+      --output-format json \
+      --no-progress >/dev/null 2>&1; then
+      NOTARYTOOL_PROFILE="$candidate"
+      notarytool_args=(--keychain-profile "$candidate")
+      NOTARYTOOL_CREDENTIAL_SOURCE="keychain profile: $candidate"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+discover_notarytool_profiles_from_keychain() {
+  if ! command -v security >/dev/null 2>&1; then
+    return 0
+  fi
+
+  security dump-keychain 2>/dev/null | awk '
+    function value(line) {
+      sub(/^.*<blob>="/, "", line)
+      sub(/".*$/, "", line)
+      return line
+    }
+    function emit() {
+      if (account != "" && service == "com.apple.gke.notary.tool") {
+        print account
+      } else if (service ~ /^com[.]apple[.]gke[.]notary[.]tool[.]/) {
+        sub(/^com[.]apple[.]gke[.]notary[.]tool[.]/, "", service)
+        if (service != "") {
+          print service
+        }
+      }
+    }
+    /^keychain:/ {
+      emit()
+      account = ""
+      service = ""
+      next
+    }
+    /"acct"<blob>=/ { account = value($0) }
+    /"svce"<blob>=/ { service = value($0) }
+    END { emit() }
+  '
+}
+
+repo_slug="${FORK_REPO//\//-}"
+for candidate in ${NOTARYTOOL_PROFILE_CANDIDATES//,/ }; do
+  add_notary_profile_candidate "$candidate"
+done
+while IFS= read -r candidate; do
+  add_notary_profile_candidate "$candidate"
+done < <(discover_notarytool_profiles_from_keychain)
+add_notary_profile_candidate "$repo_slug-notary"
+add_notary_profile_candidate "${APP_NAME}-notary"
+add_notary_profile_candidate "cmux-notary"
+add_notary_profile_candidate "cmuxterm-notary"
+add_notary_profile_candidate "apohl79-cmux"
+add_notary_profile_candidate "notarytool"
+
 if [[ -n "$NOTARYTOOL_PROFILE" ]]; then
   notarytool_args=(--keychain-profile "$NOTARYTOOL_PROFILE")
+  NOTARYTOOL_CREDENTIAL_SOURCE="keychain profile: $NOTARYTOOL_PROFILE"
+elif [[ -n "${NOTARYTOOL_KEY:-}" && -n "${NOTARYTOOL_KEY_ID:-}" ]]; then
+  notarytool_args=(--key "$NOTARYTOOL_KEY" --key-id "$NOTARYTOOL_KEY_ID")
+  if [[ -n "${NOTARYTOOL_ISSUER:-}" ]]; then
+    notarytool_args+=(--issuer "$NOTARYTOOL_ISSUER")
+  fi
+  NOTARYTOOL_CREDENTIAL_SOURCE="App Store Connect API key"
+elif [[ -n "${APP_STORE_CONNECT_API_KEY_PATH:-}" && -n "${APP_STORE_CONNECT_KEY_ID:-}" ]]; then
+  notarytool_args=(--key "$APP_STORE_CONNECT_API_KEY_PATH" --key-id "$APP_STORE_CONNECT_KEY_ID")
+  if [[ -n "${APP_STORE_CONNECT_ISSUER_ID:-}" ]]; then
+    notarytool_args+=(--issuer "$APP_STORE_CONNECT_ISSUER_ID")
+  fi
+  NOTARYTOOL_CREDENTIAL_SOURCE="App Store Connect API key"
 elif [[ -n "${APPLE_ID:-}" && -n "${APPLE_TEAM_ID:-}" && -n "${APPLE_APP_SPECIFIC_PASSWORD:-}" ]]; then
   notarytool_args=(--apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD")
+  NOTARYTOOL_CREDENTIAL_SOURCE="APPLE_ID/APPLE_TEAM_ID credentials"
+else
+  detect_notarytool_profile || true
 fi
 
 SHOULD_NOTARIZE=0
@@ -190,11 +294,7 @@ case "$NOTARIZE" in
 esac
 
 if [[ "$SHOULD_NOTARIZE" == "1" ]]; then
-  if [[ -n "$NOTARYTOOL_PROFILE" ]]; then
-    log "notarization: enabled (keychain profile: $NOTARYTOOL_PROFILE)"
-  else
-    log "notarization: enabled (APPLE_ID/APPLE_TEAM_ID credentials)"
-  fi
+  log "notarization: enabled ($NOTARYTOOL_CREDENTIAL_SOURCE)"
 else
   log "notarization: $NOTARIZATION_STATUS"
 fi

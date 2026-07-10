@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Install the apohl79/cmux fork build. Prefer downloading the fork release zip;
-# build/sign/notarize/upload it locally only when the release asset is missing.
+# build/sign/notarize/upload it locally only when the release asset is missing,
+# then refresh Codex and Claude Code session-restore hooks.
 
 set -euo pipefail
 
@@ -11,6 +12,8 @@ Usage: ./scripts/install-fork.sh [options]
 Downloads the fork release zip from apohl79/cmux and installs it. If the release
 asset is unavailable, calls ./scripts/build-fork.sh to build/sign/notarize,
 create the release if needed, upload the zip with --clobber, then installs it.
+After installation, refreshes Codex hooks and validates the bundled Claude Code
+wrapper used to inject current hooks into new sessions.
 
 Options:
   --target <path>           Install path (default: /Applications/cmux.app).
@@ -209,6 +212,22 @@ fi
 if ! codesign --verify --deep --strict "$TARGET" >/dev/null 2>&1; then
   echo "warning: codesign verification failed for installed app: $TARGET" >&2
 fi
+
+bundled_cli="$TARGET/Contents/Resources/bin/cmux"
+claude_wrapper="$TARGET/Contents/Resources/bin/claude"
+
+if [[ ! -x "$bundled_cli" ]]; then
+  echo "error: bundled cmux CLI is not executable: $bundled_cli" >&2
+  exit 1
+fi
+if [[ ! -x "$claude_wrapper" ]]; then
+  echo "error: bundled Claude Code wrapper is not executable: $claude_wrapper" >&2
+  exit 1
+fi
+
+log "installing or updating Codex session-restore hooks"
+"$bundled_cli" hooks codex install --yes
+log "Claude Code session-restore hooks updated via bundled wrapper"
 
 bundle_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$TARGET/Contents/Info.plist" 2>/dev/null || echo '?')"
 short_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$TARGET/Contents/Info.plist" 2>/dev/null || echo '?')"

@@ -17839,6 +17839,195 @@ struct CMUXCLI {
         case failure(CodexHookFailureCandidate)
     }
 
+    private enum CodexMonitorTerminalResult {
+        case pending
+        case completed
+        case aborted
+        case failure(CodexHookFailureCandidate)
+    }
+
+    private struct CodexMonitorTranscriptState {
+        var sawRelevantTurn: Bool
+        var sawAssistantMessage = false
+        var publishedUserInputCallIds = Set<String>()
+        var pendingUserInputs: [CodexHookUserInputCandidate] = []
+        var terminal: CodexMonitorTerminalResult = .pending
+
+        init(turnId: String?) {
+            sawRelevantTurn = turnId == nil
+        }
+
+        mutating func reset(turnId: String?) {
+            sawRelevantTurn = turnId == nil
+            sawAssistantMessage = false
+            publishedUserInputCallIds.removeAll(keepingCapacity: false)
+            pendingUserInputs.removeAll(keepingCapacity: false)
+            terminal = .pending
+        }
+
+        var isPending: Bool {
+            if case .pending = terminal { return true }
+            return false
+        }
+    }
+
+    private struct CodexTranscriptTailReader {
+        private static let maxInitialTailBytes: UInt64 = 512 * 1024
+        private static let maxBufferedLineBytes = 1024 * 1024
+        private static let readChunkBytes = 64 * 1024
+
+        private var path: String?
+        private var readOffset: UInt64 = 0
+        private var didReadInitialTail = false
+        private var pendingData = Data()
+        private var discardingOversizedLine = false
+
+        mutating func reset() {
+            path = nil
+            resetReadState()
+        }
+
+        mutating func readNewLines(
+            path rawPath: String,
+            onReset: () -> Void,
+            onLine: (Data) -> Bool
+        ) -> Bool {
+            let expandedPath = NSString(string: rawPath).expandingTildeInPath
+            if path != expandedPath {
+                path = expandedPath
+                resetReadState()
+                onReset()
+            }
+
+            guard let handle = try? FileHandle(forReadingFrom: URL(fileURLWithPath: expandedPath)) else {
+                return false
+            }
+            defer { try? handle.close() }
+            guard let endOffset = try? handle.seekToEnd() else { return false }
+
+            if !didReadInitialTail {
+                return readInitialTail(handle: handle, endOffset: endOffset, onLine: onLine)
+            }
+            if readOffset > endOffset {
+                resetReadState()
+                onReset()
+                return readInitialTail(handle: handle, endOffset: endOffset, onLine: onLine)
+            }
+
+            do {
+                try handle.seek(toOffset: readOffset)
+            } catch {
+                return false
+            }
+            while readOffset < endOffset {
+                let remaining = endOffset - readOffset
+                let readLength = Int(min(UInt64(Self.readChunkBytes), remaining))
+                let data = handle.readData(ofLength: readLength)
+                guard !data.isEmpty else { break }
+                readOffset += UInt64(data.count)
+                if !process(data: data, onLine: onLine) { break }
+            }
+            return true
+        }
+
+        private mutating func readInitialTail(
+            handle: FileHandle,
+            endOffset: UInt64,
+            onLine: (Data) -> Bool
+        ) -> Bool {
+            let startOffset = endOffset > Self.maxInitialTailBytes
+                ? endOffset - Self.maxInitialTailBytes
+                : 0
+            let startsAtLineBoundary = initialTailStartsAtLineBoundary(
+                handle: handle,
+                startOffset: startOffset
+            )
+            do {
+                try handle.seek(toOffset: startOffset)
+            } catch {
+                return false
+            }
+
+            var data = handle.readData(ofLength: Int(endOffset - startOffset))
+            readOffset = startOffset + UInt64(data.count)
+            didReadInitialTail = true
+            if startOffset > 0, !startsAtLineBoundary {
+                guard let newline = data.firstIndex(of: 0x0A) else {
+                    pendingData.removeAll(keepingCapacity: false)
+                    discardingOversizedLine = true
+                    return true
+                }
+                data.removeSubrange(0...newline)
+            }
+            _ = process(data: data, onLine: onLine)
+            return true
+        }
+
+        private func initialTailStartsAtLineBoundary(
+            handle: FileHandle,
+            startOffset: UInt64
+        ) -> Bool {
+            guard startOffset > 0 else { return true }
+            do {
+                try handle.seek(toOffset: startOffset - 1)
+            } catch {
+                return false
+            }
+            return handle.readData(ofLength: 1).first == 0x0A
+        }
+
+        private mutating func process(data: Data, onLine: (Data) -> Bool) -> Bool {
+            guard !data.isEmpty else { return true }
+            var cursor = data.startIndex
+            while cursor < data.endIndex {
+                if discardingOversizedLine {
+                    guard let newline = data[cursor...].firstIndex(of: 0x0A) else { return true }
+                    discardingOversizedLine = false
+                    cursor = data.index(after: newline)
+                    continue
+                }
+
+                guard let newline = data[cursor...].firstIndex(of: 0x0A) else {
+                    if !appendPendingLineFragment(data[cursor...]) {
+                        discardingOversizedLine = true
+                    }
+                    return true
+                }
+
+                let lineData = data[cursor..<newline]
+                if pendingData.isEmpty {
+                    if lineData.count <= Self.maxBufferedLineBytes,
+                       !onLine(Data(lineData)) {
+                        return false
+                    }
+                } else if appendPendingLineFragment(lineData) {
+                    let completeLine = pendingData
+                    pendingData.removeAll(keepingCapacity: true)
+                    if !onLine(completeLine) { return false }
+                }
+                cursor = data.index(after: newline)
+            }
+            return true
+        }
+
+        private mutating func appendPendingLineFragment(_ fragment: Data.SubSequence) -> Bool {
+            guard !fragment.isEmpty else { return true }
+            guard pendingData.count + fragment.count <= Self.maxBufferedLineBytes else {
+                pendingData.removeAll(keepingCapacity: false)
+                return false
+            }
+            pendingData.append(contentsOf: fragment)
+            return true
+        }
+
+        private mutating func resetReadState() {
+            readOffset = 0
+            didReadInitialTail = false
+            pendingData.removeAll(keepingCapacity: false)
+            discardingOversizedLine = false
+        }
+    }
+
     private enum CodexMonitorOwnerState {
         case alive
         case gone
@@ -18033,90 +18222,6 @@ struct CMUXCLI {
         return .healthy
     }
 
-    private func readCodexTranscriptUserInput(
-        path: String,
-        turnId: String?,
-        excluding publishedCallIds: Set<String>
-    ) -> CodexHookUserInputCandidate? {
-        guard let content = readTextFileTail(path: path, maxBytes: 512 * 1024) else {
-            return nil
-        }
-
-        var sawRelevantTurn = turnId == nil
-        var candidate: CodexHookUserInputCandidate?
-        for line in content.split(separator: "\n", omittingEmptySubsequences: true) {
-            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !trimmed.isEmpty,
-                  let data = trimmed.data(using: .utf8),
-                  let object = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any],
-                  let objectType = object["type"] as? String else {
-                continue
-            }
-
-            if objectType == "turn_context",
-               let payload = object["payload"] as? [String: Any] {
-                let payloadTurnId = firstString(in: payload, keys: ["turn_id", "turnId"])
-                if let turnId {
-                    sawRelevantTurn = payloadTurnId == turnId
-                } else {
-                    sawRelevantTurn = true
-                }
-                continue
-            }
-
-            if objectType == "response_item",
-               let payload = object["payload"] as? [String: Any],
-               let userInput = codexUserInputFunctionCallCandidate(
-                   from: payload,
-                   turnId: turnId,
-                   sawRelevantTurn: sawRelevantTurn,
-                   excluding: publishedCallIds
-               ) {
-                candidate = userInput
-                continue
-            }
-
-            guard objectType == "event_msg",
-                  let payload = object["payload"] as? [String: Any],
-                  let eventType = payload["type"] as? String else {
-                continue
-            }
-
-            switch eventType {
-            case "task_started":
-                let payloadTurnId = firstString(in: payload, keys: ["turn_id", "turnId"])
-                if let turnId {
-                    sawRelevantTurn = payloadTurnId == turnId
-                } else {
-                    sawRelevantTurn = true
-                }
-
-            case "request_user_input":
-                if let userInput = codexUserInputEventCandidate(
-                    from: payload,
-                    turnId: turnId,
-                    sawRelevantTurn: sawRelevantTurn,
-                    excluding: publishedCallIds
-                ) {
-                    candidate = userInput
-                }
-
-            case "task_complete", "turn_complete":
-                let payloadTurnId = firstString(in: payload, keys: ["turn_id", "turnId"])
-                if let turnId {
-                    guard payloadTurnId == turnId else { continue }
-                }
-                sawRelevantTurn = true
-                candidate = nil
-
-            default:
-                break
-            }
-        }
-
-        return candidate
-    }
-
     private func codexUserInputEventCandidate(
         from payload: [String: Any],
         turnId: String?,
@@ -18209,6 +18314,128 @@ struct CMUXCLI {
             }
         }
         return nil
+    }
+
+    private func processCodexMonitorTranscriptLine(
+        _ data: Data,
+        turnId: String?,
+        state: inout CodexMonitorTranscriptState
+    ) {
+        autoreleasepool {
+            guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let objectType = object["type"] as? String else {
+                return
+            }
+
+            if objectType == "turn_context",
+               let payload = object["payload"] as? [String: Any] {
+                let payloadTurnId = firstString(in: payload, keys: ["turn_id", "turnId"])
+                state.sawRelevantTurn = turnId == nil || payloadTurnId == turnId
+                return
+            }
+
+            if objectType == "response_item",
+               let payload = object["payload"] as? [String: Any] {
+                if (turnId == nil || state.sawRelevantTurn),
+                   codexTranscriptLineHasAssistantMessage(object) {
+                    state.sawAssistantMessage = true
+                }
+                if let userInput = codexUserInputFunctionCallCandidate(
+                    from: payload,
+                    turnId: turnId,
+                    sawRelevantTurn: state.sawRelevantTurn,
+                    excluding: state.publishedUserInputCallIds
+                ) {
+                    state.publishedUserInputCallIds.insert(userInput.callId)
+                    state.pendingUserInputs.append(userInput)
+                }
+                return
+            }
+
+            guard objectType == "event_msg",
+                  let payload = object["payload"] as? [String: Any],
+                  let eventType = payload["type"] as? String else {
+                return
+            }
+
+            switch eventType {
+            case "task_started":
+                let payloadTurnId = firstString(in: payload, keys: ["turn_id", "turnId"])
+                state.sawRelevantTurn = turnId == nil || payloadTurnId == turnId
+                if state.sawRelevantTurn {
+                    state.sawAssistantMessage = false
+                }
+
+            case "request_user_input":
+                if let userInput = codexUserInputEventCandidate(
+                    from: payload,
+                    turnId: turnId,
+                    sawRelevantTurn: state.sawRelevantTurn,
+                    excluding: state.publishedUserInputCallIds
+                ) {
+                    state.publishedUserInputCallIds.insert(userInput.callId)
+                    state.pendingUserInputs.append(userInput)
+                }
+
+            case "error", "stream_error":
+                let payloadTurnId = firstString(in: payload, keys: ["turn_id", "turnId"])
+                if let turnId {
+                    if let payloadTurnId {
+                        guard payloadTurnId == turnId else { return }
+                        state.sawRelevantTurn = true
+                    } else {
+                        guard state.sawRelevantTurn else { return }
+                    }
+                }
+                guard let failure = codexHookFailureCandidate(
+                    from: payload,
+                    isStreamError: eventType == "stream_error",
+                    requireFailureSignal: false
+                ) else {
+                    return
+                }
+                state.pendingUserInputs.removeAll(keepingCapacity: false)
+                state.terminal = .failure(failure)
+
+            case "task_complete", "turn_complete":
+                let payloadTurnId = firstString(in: payload, keys: ["turn_id", "turnId"])
+                if let turnId {
+                    guard payloadTurnId == turnId else { return }
+                }
+                state.sawRelevantTurn = true
+                state.pendingUserInputs.removeAll(keepingCapacity: false)
+                if let lastMessage = payload["last_agent_message"] as? String,
+                   !lastMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    state.sawAssistantMessage = true
+                    state.terminal = .completed
+                } else if state.sawAssistantMessage {
+                    state.terminal = .completed
+                } else {
+                    state.terminal = .failure(
+                        CodexHookFailureCandidate(
+                            message: String(
+                                localized: "agent.codex.error.noFinalResponse",
+                                defaultValue: "Codex ended before sending a final response"
+                            ),
+                            codexErrorInfo: nil,
+                            additionalDetails: nil,
+                            isStreamError: false
+                        )
+                    )
+                }
+
+            case "turn_aborted":
+                let payloadTurnId = firstString(in: payload, keys: ["turn_id", "turnId"])
+                if let turnId {
+                    guard payloadTurnId == turnId else { return }
+                }
+                state.pendingUserInputs.removeAll(keepingCapacity: false)
+                state.terminal = .aborted
+
+            default:
+                break
+            }
+        }
     }
 
     private func codexHookStopPayloadHasAssistantMessage(_ object: [String: Any]?) -> Bool {
@@ -18505,7 +18732,12 @@ struct CMUXCLI {
         }
     }
 
-    private func retireCodexMonitorLeases(sessionId: String, turnId: String?, env: [String: String]) {
+    private func retireCodexMonitorLeases(
+        sessionId: String,
+        turnId: String?,
+        preservingLeasePath: String? = nil,
+        env: [String: String]
+    ) {
         let normalizedSessionId = sessionId.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedSessionId.isEmpty else { return }
 
@@ -18513,6 +18745,9 @@ struct CMUXCLI {
         let now = Date().timeIntervalSince1970
         let normalizedTurnId = turnId?.trimmingCharacters(in: .whitespacesAndNewlines)
         let shouldMatchTurn = normalizedTurnId?.isEmpty == false
+        let preservingPath = preservingLeasePath.map {
+            URL(fileURLWithPath: $0, isDirectory: false).standardizedFileURL.path
+        }
         let directory = codexMonitorLeaseDirectory(env: env)
         let targetPaths = ((try? fileManager.contentsOfDirectory(
             at: directory,
@@ -18521,6 +18756,10 @@ struct CMUXCLI {
         )) ?? []).map(\.path)
 
         for path in targetPaths {
+            let standardizedPath = URL(fileURLWithPath: path, isDirectory: false).standardizedFileURL.path
+            guard preservingPath == nil || standardizedPath != preservingPath else {
+                continue
+            }
             guard var record = readCodexMonitorLease(path: path),
                   record.sessionId == normalizedSessionId,
                   !shouldMatchTurn || record.turnId == normalizedTurnId,
@@ -18671,7 +18910,8 @@ struct CMUXCLI {
         defer { removeCodexMonitorLease(path: leasePath) }
         let deadline = Date().addingTimeInterval(4 * 60 * 60)
         var nextOwnerCheck = Date.distantPast
-        var publishedUserInputCallIds = Set<String>()
+        var tailReader = CodexTranscriptTailReader()
+        var transcriptState = CodexMonitorTranscriptState(turnId: turnId)
         while Date() < deadline {
             if isCodexMonitorLeaseRetired(path: leasePath) {
                 return
@@ -18689,40 +18929,49 @@ struct CMUXCLI {
             }
 
             if let currentTranscriptPath = transcriptPath {
-                if let userInput = readCodexTranscriptUserInput(
+                let transcriptAvailable = tailReader.readNewLines(
                     path: currentTranscriptPath,
-                    turnId: turnId,
-                    excluding: publishedUserInputCallIds
-                ) {
-                    publishedUserInputCallIds.insert(userInput.callId)
-                    publishCodexMonitorUserInput(
-                        userInput,
-                        workspaceId: workspaceId,
-                        surfaceId: surfaceId,
-                        client: client
-                    )
-                }
-
-                switch readCodexTranscriptFailure(
-                    path: currentTranscriptPath,
-                    turnId: turnId,
-                    requireTerminalCompletion: true
-                ) {
-                case .failure(let failure):
-                    publishCodexMonitorFailure(
-                        failure,
-                        workspaceId: workspaceId,
-                        surfaceId: surfaceId,
-                        client: client
-                    )
-                    return
-                case .healthy:
-                    return
-                case .pending:
-                    break
-                case .unavailable:
+                    onReset: {
+                        transcriptState.reset(turnId: turnId)
+                    },
+                    onLine: { data in
+                        processCodexMonitorTranscriptLine(
+                            data,
+                            turnId: turnId,
+                            state: &transcriptState
+                        )
+                        return transcriptState.isPending
+                    }
+                )
+                if transcriptAvailable {
+                    switch transcriptState.terminal {
+                    case .pending:
+                        let pendingUserInputs = transcriptState.pendingUserInputs
+                        transcriptState.pendingUserInputs.removeAll(keepingCapacity: true)
+                        for userInput in pendingUserInputs {
+                            publishCodexMonitorUserInput(
+                                userInput,
+                                workspaceId: workspaceId,
+                                surfaceId: surfaceId,
+                                client: client
+                            )
+                        }
+                    case .failure(let failure):
+                        publishCodexMonitorFailure(
+                            failure,
+                            workspaceId: workspaceId,
+                            surfaceId: surfaceId,
+                            client: client
+                        )
+                        return
+                    case .completed, .aborted:
+                        return
+                    }
+                } else {
                     let unavailableTranscriptPath = currentTranscriptPath
                     transcriptPath = nil
+                    tailReader.reset()
+                    transcriptState.reset(turnId: turnId)
                     if let resolvedTranscriptPath = findCodexTranscriptPath(sessionId: sessionId, env: env) {
                         transcriptPath = resolvedTranscriptPath
                         if resolvedTranscriptPath != unavailableTranscriptPath {
@@ -20861,6 +21110,13 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
                     telemetry.breadcrumb(
                         "codex-hook.monitor.lease-unavailable",
                         data: ["has_turn_id": normalizedHookValue(input.turnId) != nil]
+                    )
+                } else {
+                    retireCodexMonitorLeases(
+                        sessionId: sessionId,
+                        turnId: nil,
+                        preservingLeasePath: leasePath,
+                        env: env
                     )
                 }
                 startCodexTranscriptMonitor(

@@ -1673,6 +1673,13 @@ final class CLINotifyProcessIntegrationTests: XCTestCase {
         let timedOut: Bool
     }
 
+    private struct RunningProcess {
+        let process: Process
+        let stdoutPipe: Pipe
+        let stderrPipe: Pipe
+        let exitSignal: DispatchSemaphore
+    }
+
     private final class MockSocketServerState: @unchecked Sendable {
         private let lock = NSLock()
         private let commandSemaphore = DispatchSemaphore(value: 0)
@@ -1824,6 +1831,57 @@ final class CLINotifyProcessIntegrationTests: XCTestCase {
         let stderr = String(data: stderrPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
         return ProcessRunResult(
             status: process.terminationStatus,
+            stdout: stdout,
+            stderr: stderr,
+            timedOut: timedOut
+        )
+    }
+
+    private func startRunningProcess(
+        executablePath: String,
+        arguments: [String],
+        environment: [String: String]
+    ) throws -> RunningProcess {
+        let process = Process()
+        let stdoutPipe = Pipe()
+        let stderrPipe = Pipe()
+        process.executableURL = URL(fileURLWithPath: executablePath)
+        process.arguments = arguments
+        process.environment = environment
+        process.standardInput = FileHandle.nullDevice
+        process.standardOutput = stdoutPipe
+        process.standardError = stderrPipe
+        try process.run()
+
+        let exitSignal = DispatchSemaphore(value: 0)
+        DispatchQueue.global(qos: .userInitiated).async {
+            process.waitUntilExit()
+            exitSignal.signal()
+        }
+        return RunningProcess(
+            process: process,
+            stdoutPipe: stdoutPipe,
+            stderrPipe: stderrPipe,
+            exitSignal: exitSignal
+        )
+    }
+
+    private func finishRunningProcess(_ running: RunningProcess, timeout: TimeInterval) -> ProcessRunResult {
+        let timedOut = running.exitSignal.wait(timeout: .now() + timeout) == .timedOut
+        if timedOut {
+            running.process.terminate()
+            _ = running.exitSignal.wait(timeout: .now() + 1)
+        }
+        let stdout = String(
+            data: running.stdoutPipe.fileHandleForReading.readDataToEndOfFile(),
+            encoding: .utf8
+        ) ?? ""
+        let stderr = String(
+            data: running.stderrPipe.fileHandleForReading.readDataToEndOfFile(),
+            encoding: .utf8
+        ) ?? ""
+        return ProcessRunResult(
+            status: running.process.terminationStatus,
             stdout: stdout,
             stderr: stderr,
             timedOut: timedOut
@@ -2814,6 +2872,197 @@ final class CLINotifyProcessIntegrationTests: XCTestCase {
         )
     }
 
+    func testCodexPromptSubmitRetiresPreviousMonitorLeaseForSameSession() throws {
+        let cliPath = try bundledCLIPath()
+        let socketPath = makeSocketPath("codex")
+        let listenerFD = try bindUnixSocket(at: socketPath)
+        let state = MockSocketServerState()
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cmux-codex-monitor-leases-\(UUID().uuidString)", isDirectory: true)
+        let workspaceId = "11111111-1111-1111-1111-111111111111"
+        let surfaceId = "22222222-2222-2222-2222-222222222222"
+        let sessionId = "codex-session-lease-dedupe"
+
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.removeItem(at: root)
+            Darwin.close(listenerFD)
+            unlink(socketPath)
+        }
+
+        startMockServerAccepting(listenerFD: listenerFD, state: state, connectionLimit: 6) { line in
+            guard let data = line.data(using: .utf8),
+                  let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let id = payload["id"] as? String else {
+                return "OK"
+            }
+            return self.v2Response(
+                id: id,
+                ok: true,
+                result: ["surfaces": [["id": surfaceId, "ref": surfaceId, "focused": true]]]
+            )
+        }
+
+        var environment = ProcessInfo.processInfo.environment
+        environment["CMUX_SOCKET_PATH"] = socketPath
+        environment["CMUX_WORKSPACE_ID"] = workspaceId
+        environment["CMUX_SURFACE_ID"] = surfaceId
+        environment["CMUX_AGENT_HOOK_STATE_DIR"] = root.path
+        environment["CMUX_CLI_SENTRY_DISABLED"] = "1"
+        environment["CODEX_HOME"] = root.appendingPathComponent("codex-home", isDirectory: true).path
+
+        for (turnId, prompt) in [("turn-one", "first"), ("turn-two", "second")] {
+            let hookInput = """
+            {"session_id":"\(sessionId)","turn_id":"\(turnId)","cwd":"\(root.path)","hook_event_name":"UserPromptSubmit","prompt":"\(prompt)"}
+            """
+            let result = runProcess(
+                executablePath: cliPath,
+                arguments: ["hooks", "codex", "prompt-submit"],
+                environment: environment,
+                standardInput: hookInput,
+                timeout: 5
+            )
+
+            XCTAssertFalse(result.timedOut, result.stderr)
+            XCTAssertEqual(result.status, 0, result.stderr)
+            XCTAssertEqual(result.stdout, "{}\n")
+            XCTAssertTrue(
+                waitForCodexMonitorActiveLeaseTurns(in: root, expected: [turnId], timeout: 3),
+                "Expected only \(turnId) to remain active, saw \(codexMonitorActiveLeaseTurns(in: root))"
+            )
+        }
+    }
+
+    func testCodexHookMonitorReadsEachLineOnceThenExitsSilentlyOnAbort() throws {
+        let cliPath = try bundledCLIPath()
+        let socketPath = makeSocketPath("offset")
+        let listenerFD = try bindUnixSocket(at: socketPath)
+        let state = MockSocketServerState()
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cmux-codex-monitor-offset-\(UUID().uuidString)", isDirectory: true)
+        let workspaceId = "11111111-1111-1111-1111-111111111111"
+        let surfaceId = "22222222-2222-2222-2222-222222222222"
+        let sessionId = "codex-session-monitor-offset"
+        let turnId = "turn-monitor-offset"
+        let transcriptURL = root.appendingPathComponent("rollout-\(sessionId).jsonl")
+        let leaseURL = root.appendingPathComponent("codex-monitor-leases/offset.json")
+        let prefix = """
+        {"type":"session_meta","payload":{"id":"\(sessionId)"}}
+        {"type":"event_msg","payload":{"type":"task_started","turn_id":"\(turnId)"}}
+        """.appending("\n")
+        let inputLine = """
+        {"type":"event_msg","payload":{"type":"request_user_input","call_id":"call-offset","turn_id":"\(turnId)","questions":[{"question":"Which path should I use?"}]}}
+        """ + String(repeating: " ", count: 256)
+
+        try FileManager.default.createDirectory(
+            at: leaseURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try (prefix + inputLine + "\n").write(to: transcriptURL, atomically: true, encoding: .utf8)
+        try writeCodexMonitorLease(
+            to: leaseURL,
+            sessionId: sessionId,
+            turnId: turnId,
+            workspaceId: workspaceId,
+            surfaceId: surfaceId
+        )
+        defer {
+            Darwin.close(listenerFD)
+            unlink(socketPath)
+            try? FileManager.default.removeItem(at: root)
+        }
+
+        _ = startMockServerSignal(listenerFD: listenerFD, state: state) { line in
+            guard let data = line.data(using: .utf8),
+                  let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let id = payload["id"] as? String else {
+                return "OK"
+            }
+            return self.v2Response(
+                id: id,
+                ok: true,
+                result: ["surfaces": [["id": surfaceId, "ref": surfaceId]]]
+            )
+        }
+
+        var environment = ProcessInfo.processInfo.environment
+        environment["CMUX_SOCKET_PATH"] = socketPath
+        environment["CMUX_AGENT_HOOK_STATE_DIR"] = root.path
+        environment["CMUX_CLI_SENTRY_DISABLED"] = "1"
+        let running = try startRunningProcess(
+            executablePath: cliPath,
+            arguments: [
+                "hooks", "codex", "monitor",
+                "--workspace", workspaceId,
+                "--surface", surfaceId,
+                "--session", sessionId,
+                "--turn", turnId,
+                "--transcript", transcriptURL.path,
+                "--lease", leaseURL.path,
+            ],
+            environment: environment
+        )
+        defer {
+            if running.process.isRunning {
+                running.process.terminate()
+                _ = running.exitSignal.wait(timeout: .now() + 1)
+            }
+        }
+
+        XCTAssertTrue(
+            waitForSocketCommand(state: state, timeout: 3) {
+                $0.contains("Codex|Waiting|Which path should I use?")
+            },
+            "Expected initial input event, saw \(state.snapshot())"
+        )
+        XCTAssertTrue(
+            waitForProcess(running.process, toHoldOpenFile: transcriptURL.path, timeout: 2),
+            "Monitor did not start watching the offset transcript"
+        )
+
+        let replacement = """
+        {"type":"event_msg","payload":{"type":"error","turn_id":"\(turnId)","message":"Stream disconnected before completion.","codex_error_info":"response_stream_disconnected"}}
+        """
+        XCTAssertLessThanOrEqual(replacement.utf8.count, inputLine.utf8.count)
+        let paddedReplacement = replacement + String(
+            repeating: " ",
+            count: inputLine.utf8.count - replacement.utf8.count
+        )
+        let handle = try FileHandle(forWritingTo: transcriptURL)
+        try handle.seek(toOffset: UInt64(prefix.utf8.count))
+        handle.write(Data(paddedReplacement.utf8))
+        try handle.seekToEnd()
+        handle.write(Data("{\"type\":\"event_msg\",\"payload\":{\"type\":\"warning\"}}\n".utf8))
+        try handle.close()
+
+        XCTAssertFalse(
+            waitForSocketCommand(state: state, timeout: 2) {
+                $0.contains("Codex|Network error|") || $0.contains("set_status codex Codex network error")
+            },
+            "Monitor reparsed an already-consumed line: \(state.snapshot())"
+        )
+        XCTAssertTrue(running.process.isRunning, "Monitor exited after an in-place change before its read offset")
+
+        try appendCodexTranscriptLine(
+            "{\"type\":\"event_msg\",\"payload\":{\"type\":\"turn_aborted\",\"turn_id\":\"\(turnId)\",\"reason\":\"interrupted\"}}",
+            to: transcriptURL
+        )
+        let result = finishRunningProcess(running, timeout: 3)
+        XCTAssertFalse(result.timedOut, result.stderr)
+        XCTAssertEqual(result.status, 0, result.stderr)
+        XCTAssertEqual(result.stdout, "")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: leaseURL.path), "Expected monitor lease removal")
+        XCTAssertFalse(
+            state.snapshot().contains {
+                $0.contains("Codex|Network error|") ||
+                    $0.contains("Codex|Error|") ||
+                    $0.contains("Codex|Completed|") ||
+                    $0.contains("set_status codex Codex network error")
+            },
+            "Expected abort to emit no success or error state, saw \(state.snapshot())"
+        )
+    }
+
     func testCodexHookMonitorSetsErrorStatusFromCompletedTranscriptWithoutAssistant() throws {
         let cliPath = try bundledCLIPath()
         let socketPath = makeSocketPath("codex")
@@ -3400,6 +3649,65 @@ final class CLINotifyProcessIntegrationTests: XCTestCase {
         return data.base64EncodedString()
     }
 
+    private func appendCodexTranscriptLine(_ line: String, to url: URL) throws {
+        let handle = try FileHandle(forWritingTo: url)
+        try handle.seekToEnd()
+        handle.write(Data((line + "\n").utf8))
+        try handle.close()
+    }
+
+    private func writeCodexMonitorLease(
+        to url: URL,
+        sessionId: String,
+        turnId: String,
+        workspaceId: String,
+        surfaceId: String
+    ) throws {
+        let payload: [String: Any] = [
+            "leaseId": url.deletingPathExtension().lastPathComponent,
+            "sessionId": sessionId,
+            "turnId": turnId,
+            "workspaceId": workspaceId,
+            "surfaceId": surfaceId,
+            "createdAt": Date().timeIntervalSince1970,
+            "retiredAt": NSNull(),
+        ]
+        let data = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
+        try data.write(to: url, options: .atomic)
+    }
+
+    private func codexMonitorActiveLeaseTurns(in root: URL) -> [String] {
+        let directory = root.appendingPathComponent("codex-monitor-leases", isDirectory: true)
+        let urls = (try? FileManager.default.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: nil,
+            options: [.skipsHiddenFiles]
+        )) ?? []
+        return urls.compactMap { url in
+            guard let data = try? Data(contentsOf: url),
+                  let lease = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  lease["retiredAt"] is NSNull || lease["retiredAt"] == nil else {
+                return nil
+            }
+            return lease["turnId"] as? String
+        }.sorted()
+    }
+
+    private func waitForCodexMonitorActiveLeaseTurns(
+        in root: URL,
+        expected: [String],
+        timeout: TimeInterval
+    ) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if codexMonitorActiveLeaseTurns(in: root) == expected.sorted() {
+                return true
+            }
+            _ = DispatchSemaphore(value: 0).wait(timeout: .now() + 0.05)
+        }
+        return codexMonitorActiveLeaseTurns(in: root) == expected.sorted()
+    }
+
     private func bindUnixSocket(at path: String) throws -> Int32 {
         unlink(path)
 
@@ -3474,6 +3782,47 @@ final class CLINotifyProcessIntegrationTests: XCTestCase {
         return handled
     }
 
+    private func startMockServerAccepting(
+        listenerFD: Int32,
+        state: MockSocketServerState,
+        connectionLimit: Int,
+        handler: @escaping @Sendable (String) -> String
+    ) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            for _ in 0..<connectionLimit {
+                var clientAddr = sockaddr_un()
+                var clientAddrLen = socklen_t(MemoryLayout<sockaddr_un>.size)
+                let clientFD = withUnsafeMutablePointer(to: &clientAddr) { ptr in
+                    ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockaddrPtr in
+                        Darwin.accept(listenerFD, sockaddrPtr, &clientAddrLen)
+                    }
+                }
+                guard clientFD >= 0 else { return }
+                DispatchQueue.global(qos: .userInitiated).async {
+                    defer { Darwin.close(clientFD) }
+                    var pending = Data()
+                    var buffer = [UInt8](repeating: 0, count: 4096)
+                    while true {
+                        let count = Darwin.read(clientFD, &buffer, buffer.count)
+                        if count < 0 {
+                            if errno == EINTR { continue }
+                            return
+                        }
+                        if count == 0 { return }
+                        pending.append(buffer, count: count)
+                        while let newlineRange = pending.firstRange(of: Data([0x0A])) {
+                            let lineData = pending.subdata(in: 0..<newlineRange.lowerBound)
+                            pending.removeSubrange(0...newlineRange.lowerBound)
+                            guard let line = String(data: lineData, encoding: .utf8) else { continue }
+                            state.append(line)
+                            guard self.writeAll(handler(line) + "\n", to: clientFD) else { return }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     private func runMockServer(
         listenerFD: Int32,
         state: MockSocketServerState,
@@ -3514,13 +3863,28 @@ final class CLINotifyProcessIntegrationTests: XCTestCase {
                     pending.removeSubrange(0...newlineRange.lowerBound)
                     guard let line = String(data: lineData, encoding: .utf8) else { continue }
                     state.append(line)
-                    let response = handler(line) + "\n"
-                    _ = response.withCString { ptr in
-                        Darwin.write(clientFD, ptr, strlen(ptr))
-                    }
+                    guard self.writeAll(handler(line) + "\n", to: clientFD) else { return }
                 }
             }
         }
+    }
+
+    private func writeAll(_ string: String, to fd: Int32) -> Bool {
+        let bytes = Array(string.utf8)
+        var offset = 0
+        while offset < bytes.count {
+            let written = bytes.withUnsafeBytes { buffer in
+                Darwin.write(fd, buffer.baseAddress!.advanced(by: offset), bytes.count - offset)
+            }
+            if written > 0 {
+                offset += written
+            } else if written < 0, errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK {
+                continue
+            } else {
+                return false
+            }
+        }
+        return true
     }
 
     private func v2Response(

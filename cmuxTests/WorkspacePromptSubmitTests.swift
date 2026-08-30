@@ -197,6 +197,19 @@ final class WorkspacePromptSubmitTests: XCTestCase {
         XCTAssertEqual(event.assistantFinalMessage, "done from extra fields")
     }
 
+    func testFeedEventExtractsSurfaceIdentityForLiveWorkspaceRouting() {
+        let surfaceId = UUID()
+        let event = WorkstreamEvent(
+            sessionId: "agent-session",
+            hookEventName: .stop,
+            source: "codex",
+            workspaceId: UUID().uuidString,
+            extraFieldsJSON: #"{"surface_id":"\#(surfaceId.uuidString)"}"#
+        )
+
+        XCTAssertEqual(event.surfaceIdForRouting, surfaceId)
+    }
+
     func testBlankSubmittedMessageDoesNotClearRecordedPreview() {
         let workspace = Workspace()
 

@@ -16617,7 +16617,9 @@ struct CMUXCLI {
         let hookArgs = Array(commandArgs.dropFirst())
         let hookWsFlag = optionValue(hookArgs, name: "--workspace")
         let workspaceArg = hookWsFlag ?? ProcessInfo.processInfo.environment["CMUX_WORKSPACE_ID"]
-        let surfaceArg = optionValue(hookArgs, name: "--surface") ?? (hookWsFlag == nil ? ProcessInfo.processInfo.environment["CMUX_SURFACE_ID"] : nil)
+        let hookSurfaceFlag = optionValue(hookArgs, name: "--surface")
+        let surfaceArg = hookSurfaceFlag ?? (hookWsFlag == nil ? ProcessInfo.processInfo.environment["CMUX_SURFACE_ID"] : nil)
+        let ambientSurfaceArg = hookWsFlag == nil ? surfaceArg : nil
         let rawInput = String(data: FileHandle.standardInput.readDataToEndOfFile(), encoding: .utf8) ?? ""
         let parsedInput = parseClaudeHookInput(rawInput: rawInput)
         let sessionStore = ClaudeHookSessionStore()
@@ -16632,14 +16634,15 @@ struct CMUXCLI {
         )
 
         var didSendFeedTelemetry = false
-        func sendClaudeFeedTelemetry(workspaceId: String? = nil) {
+        func sendClaudeFeedTelemetry(workspaceId: String? = nil, surfaceId: String? = nil) {
             didSendFeedTelemetry = true
             sendFeedTelemetry(
                 client: client,
                 source: "claude",
                 subcommand: subcommand,
                 parsedInput: parsedInput,
-                workspaceId: workspaceId ?? workspaceArg
+                workspaceId: workspaceId ?? workspaceArg,
+                surfaceId: surfaceId ?? surfaceArg
             )
         }
         defer {
@@ -16654,6 +16657,7 @@ struct CMUXCLI {
             let workspaceId = try resolvePreferredWorkspaceIdForClaudeHook(
                 preferred: nil,
                 fallback: workspaceArg,
+                surfaceHint: ambientSurfaceArg,
                 client: client
             )
             let surfaceId = try resolvePreferredSurfaceIdForClaudeHook(
@@ -16662,7 +16666,7 @@ struct CMUXCLI {
                 workspaceId: workspaceId,
                 client: client
             )
-            sendClaudeFeedTelemetry(workspaceId: workspaceId)
+            sendClaudeFeedTelemetry(workspaceId: workspaceId, surfaceId: surfaceId)
             let claudePid: Int? = {
                 guard let raw = ProcessInfo.processInfo.environment["CMUX_CLAUDE_PID"]?
                     .trimmingCharacters(in: .whitespacesAndNewlines),
@@ -16744,6 +16748,7 @@ struct CMUXCLI {
                 let workspaceId = try resolvePreferredWorkspaceIdForClaudeHook(
                     preferred: mappedSession?.workspaceId,
                     fallback: workspaceArg,
+                    surfaceHint: ambientSurfaceArg,
                     client: client
                 )
                 let surfaceId = try resolvePreferredSurfaceIdForClaudeHook(
@@ -16752,7 +16757,7 @@ struct CMUXCLI {
                     workspaceId: workspaceId,
                     client: client
                 )
-                sendClaudeFeedTelemetry(workspaceId: workspaceId)
+                sendClaudeFeedTelemetry(workspaceId: workspaceId, surfaceId: surfaceId)
 
                 guard shouldApplyClaudeHookVisibleMutation(
                     sessionStore: sessionStore,
@@ -16817,6 +16822,7 @@ struct CMUXCLI {
             let workspaceId = try resolvePreferredWorkspaceIdForClaudeHook(
                 preferred: mappedSession?.workspaceId,
                 fallback: workspaceArg,
+                surfaceHint: ambientSurfaceArg,
                 client: client
             )
             let surfaceId = try resolvePreferredSurfaceIdForClaudeHook(
@@ -16825,7 +16831,7 @@ struct CMUXCLI {
                 workspaceId: workspaceId,
                 client: client
             )
-            sendClaudeFeedTelemetry(workspaceId: workspaceId)
+            sendClaudeFeedTelemetry(workspaceId: workspaceId, surfaceId: surfaceId)
             let shouldApplyPromptSubmit =
                 shouldApplyClaudeHookVisibleMutation(
                     sessionStore: sessionStore,
@@ -16875,9 +16881,10 @@ struct CMUXCLI {
             let workspaceId = try resolvePreferredWorkspaceIdForClaudeHook(
                 preferred: mappedSession?.workspaceId,
                 fallback: workspaceArg,
+                surfaceHint: ambientSurfaceArg,
                 client: client
             )
-            sendClaudeFeedTelemetry(workspaceId: workspaceId)
+            sendClaudeFeedTelemetry(workspaceId: workspaceId, surfaceId: surfaceArg)
             guard shouldApplyClaudeHookVisibleMutation(
                 sessionStore: sessionStore,
                 parsedInput: parsedInput,
@@ -16940,6 +16947,7 @@ struct CMUXCLI {
             let fallbackWorkspaceId = try? resolvePreferredWorkspaceIdForClaudeHook(
                 preferred: mappedSession?.workspaceId,
                 fallback: workspaceArg,
+                surfaceHint: ambientSurfaceArg,
                 client: client
             )
             let fallbackSurfaceId: String? = {
@@ -16962,7 +16970,7 @@ struct CMUXCLI {
             // as current only when the consumed session was the active one.
             if let consumedSession {
                 let workspaceId = consumedSession.workspaceId
-                sendClaudeFeedTelemetry(workspaceId: workspaceId)
+                sendClaudeFeedTelemetry(workspaceId: workspaceId, surfaceId: consumedSession.surfaceId)
                 let shouldClearVisibleState = shouldApplyClaudeHookVisibleMutation(
                     sessionStore: sessionStore,
                     sessionId: consumedSession.sessionId,
@@ -16997,6 +17005,7 @@ struct CMUXCLI {
             let workspaceId = try resolvePreferredWorkspaceIdForClaudeHook(
                 preferred: mappedSession?.workspaceId,
                 fallback: workspaceArg,
+                surfaceHint: ambientSurfaceArg,
                 client: client
             )
             let surfaceId = try resolvePreferredSurfaceIdForClaudeHook(
@@ -17005,7 +17014,7 @@ struct CMUXCLI {
                 workspaceId: workspaceId,
                 client: client
             )
-            sendClaudeFeedTelemetry(workspaceId: workspaceId)
+            sendClaudeFeedTelemetry(workspaceId: workspaceId, surfaceId: surfaceId)
             let claudePid = mappedSession?.pid
             guard shouldApplyClaudeHookVisibleMutation(
                 sessionStore: sessionStore,
@@ -17212,8 +17221,13 @@ struct CMUXCLI {
     private func resolvePreferredWorkspaceIdForClaudeHook(
         preferred: String?,
         fallback: String?,
+        surfaceHint: String? = nil,
         client: SocketClient
     ) throws -> String {
+        if let surfaceHint = nonEmptyClaudeHookIdentifier(surfaceHint),
+           let liveWorkspaceId = resolveWorkspaceIdBySurfaceHint(surfaceHint, client: client) {
+            return liveWorkspaceId
+        }
         if let preferred = nonEmptyClaudeHookIdentifier(preferred) {
             return try resolveWorkspaceIdForClaudeHook(preferred, client: client)
         }
@@ -17221,6 +17235,25 @@ struct CMUXCLI {
             return try resolveWorkspaceIdForClaudeHook(fallback, client: client)
         }
         return try resolveWorkspaceIdForClaudeHook(nil, client: client)
+    }
+
+    private func resolveWorkspaceIdBySurfaceHint(
+        _ rawSurfaceId: String,
+        client: SocketClient
+    ) -> String? {
+        guard let surfaceId = UUID(uuidString: rawSurfaceId) else { return nil }
+        guard let payload = try? client.sendV2(method: "debug.terminals") else { return nil }
+        let terminals = payload["terminals"] as? [[String: Any]] ?? []
+        for terminal in terminals {
+            guard let candidateSurfaceId = terminal["surface_id"] as? String,
+                  UUID(uuidString: candidateSurfaceId) == surfaceId,
+                  let workspaceId = normalizedHandleValue(terminal["workspace_id"] as? String)
+            else {
+                continue
+            }
+            return workspaceId
+        }
+        return nil
     }
 
     private func resolvePreferredSurfaceIdForClaudeHook(
@@ -20992,10 +21025,14 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
             return
         }
 
-        // Workspace/surface resolution: prefer --workspace/--surface flags, then session store, then env
+        // Explicit flags retain priority; an ambient surface identity is
+        // re-homed through the live terminal registry before falling back to
+        // the session record or environment.
         let hookWsFlag = optionValue(hookArgs, name: "--workspace")
         let workspaceArg = hookWsFlag ?? env["CMUX_WORKSPACE_ID"]
-        let surfaceArg = optionValue(hookArgs, name: "--surface") ?? (hookWsFlag == nil ? env["CMUX_SURFACE_ID"] : nil)
+        let hookSurfaceFlag = optionValue(hookArgs, name: "--surface")
+        let surfaceArg = hookSurfaceFlag ?? (hookWsFlag == nil ? env["CMUX_SURFACE_ID"] : nil)
+        let ambientSurfaceArg = hookWsFlag == nil ? surfaceArg : nil
 
         let rawInput = String(data: FileHandle.standardInput.readDataToEndOfFile(), encoding: .utf8) ?? ""
         let input = parseClaudeHookInput(rawInput: rawInput)
@@ -21014,14 +21051,15 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
         let action = Self.subcommandActions[subcommand] ?? .noop
         let pidKey = "\(def.statusKey).\(sessionId.isEmpty ? "default" : sessionId)"
         var didSendFeedTelemetry = false
-        func sendAgentFeedTelemetry(workspaceId: String? = nil) {
+        func sendAgentFeedTelemetry(workspaceId: String? = nil, surfaceId: String? = nil) {
             didSendFeedTelemetry = true
             sendFeedTelemetry(
                 client: client,
                 source: def.name,
                 subcommand: subcommand,
                 parsedInput: input,
-                workspaceId: workspaceId ?? workspaceArg
+                workspaceId: workspaceId ?? workspaceArg,
+                surfaceId: surfaceId ?? surfaceArg
             )
         }
         defer {
@@ -21033,9 +21071,14 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
         switch action {
         case .sessionStart:
             let mapped = sessionId.isEmpty ? nil : (try? store.lookup(sessionId: sessionId))
-            let workspaceId = try resolvePreferredWorkspaceIdForClaudeHook(preferred: nil, fallback: workspaceArg, client: client)
+            let workspaceId = try resolvePreferredWorkspaceIdForClaudeHook(
+                preferred: nil,
+                fallback: workspaceArg,
+                surfaceHint: ambientSurfaceArg,
+                client: client
+            )
             let surfaceId = try resolvePreferredSurfaceIdForClaudeHook(preferred: nil, fallback: surfaceArg, workspaceId: workspaceId, client: client)
-            sendAgentFeedTelemetry(workspaceId: workspaceId)
+            sendAgentFeedTelemetry(workspaceId: workspaceId, surfaceId: surfaceId)
             let pid = inferredCodexAgentPID()
             let launchCommand = agentLaunchCommandFromEnvironment(
                 env,
@@ -21062,14 +21105,19 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
 
         case .promptSubmit:
             let mapped = sessionId.isEmpty ? nil : (try? store.lookup(sessionId: sessionId))
-            let workspaceId = try resolvePreferredWorkspaceIdForClaudeHook(preferred: workspaceArg, fallback: mapped?.workspaceId, client: client)
+            let workspaceId = try resolvePreferredWorkspaceIdForClaudeHook(
+                preferred: workspaceArg,
+                fallback: mapped?.workspaceId,
+                surfaceHint: ambientSurfaceArg,
+                client: client
+            )
             let surfaceId = try resolvePreferredSurfaceIdForClaudeHook(
                 preferred: surfaceArg,
                 fallback: mapped?.surfaceId,
                 workspaceId: workspaceId,
                 client: client
             )
-            sendAgentFeedTelemetry(workspaceId: workspaceId)
+            sendAgentFeedTelemetry(workspaceId: workspaceId, surfaceId: surfaceId)
             let pid = mapped?.pid ?? inferredCodexAgentPID()
             let launchCommand = agentLaunchCommandFromEnvironment(
                 env,
@@ -21141,9 +21189,14 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
             }
             do {
                 let mapped = sessionId.isEmpty ? nil : (try? store.lookup(sessionId: sessionId))
-                let workspaceId = try resolvePreferredWorkspaceIdForClaudeHook(preferred: workspaceArg, fallback: mapped?.workspaceId, client: client)
+                let workspaceId = try resolvePreferredWorkspaceIdForClaudeHook(
+                    preferred: workspaceArg,
+                    fallback: mapped?.workspaceId,
+                    surfaceHint: ambientSurfaceArg,
+                    client: client
+                )
                 let surfaceId = try resolvePreferredSurfaceIdForClaudeHook(preferred: surfaceArg, fallback: mapped?.surfaceId, workspaceId: workspaceId, client: client)
-                sendAgentFeedTelemetry(workspaceId: workspaceId)
+                sendAgentFeedTelemetry(workspaceId: workspaceId, surfaceId: surfaceId)
                 let pid = mapped?.pid ?? inferredCodexAgentPID()
                 let codexFailure: CodexHookFailureSummary?
                 if def.name == "codex" {
@@ -21228,7 +21281,7 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
                 retireCodexMonitorLeases(sessionId: sessionId, turnId: nil, env: env)
             }
             if let mapped = try? store.consume(sessionId: sessionId, workspaceId: nil, surfaceId: nil) {
-                sendAgentFeedTelemetry(workspaceId: mapped.workspaceId)
+                sendAgentFeedTelemetry(workspaceId: mapped.workspaceId, surfaceId: mapped.surfaceId)
                 _ = try? sendV1Command(
                     "clear_agent_pid \(pidKey) --tab=\(mapped.workspaceId)\(socketPanelOption(mapped.surfaceId)) --clear-status",
                     client: client
@@ -21253,7 +21306,8 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
         source: String,
         subcommand: String,
         parsedInput: ClaudeHookParsedInput,
-        workspaceId: String? = nil
+        workspaceId: String? = nil,
+        surfaceId: String? = nil
     ) {
         let hookEventName = Self.feedEventName(forClaudeSubcommand: subcommand)
         guard !hookEventName.isEmpty else { return }
@@ -21269,6 +21323,9 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
         ]
         if let workspaceId = feedWorkspaceId(rawObject: parsedInput.object, fallback: workspaceId) {
             event["workspace_id"] = workspaceId
+        }
+        if let surfaceId = feedSurfaceId(rawObject: parsedInput.object, fallback: surfaceId) {
+            event["surface_id"] = surfaceId
         }
         if let cwd = parsedInput.cwd { event["cwd"] = cwd }
         let toolName = parsedInput.object?["tool_name"] as? String
@@ -21404,6 +21461,23 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
            let direct = firstString(
                 in: rawObject,
                 keys: ["workspace_id", "workspaceId", "workspace_ref", "workspaceRef"]
+           ) {
+            return direct
+        }
+        return nil
+    }
+
+    private func feedSurfaceId(rawObject: [String: Any]?, fallback: String?) -> String? {
+        if let fallback {
+            let trimmed = fallback.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty {
+                return trimmed
+            }
+        }
+        if let rawObject,
+           let direct = firstString(
+                in: rawObject,
+                keys: ["surface_id", "surfaceId", "surface_ref", "surfaceRef"]
            ) {
             return direct
         }

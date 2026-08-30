@@ -14,6 +14,28 @@ enum IMessageModeSettings {
 }
 
 extension WorkstreamEvent {
+    /// Feed telemetry keeps this stable surface identity as an unknown field
+    /// so older workstream payloads remain compatible. Unlike
+    /// `CMUX_WORKSPACE_ID`, it remains valid when a terminal moves.
+    var surfaceIdForRouting: UUID? {
+        guard let extraFieldsJSON,
+              let data = extraFieldsJSON.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else {
+            return nil
+        }
+
+        for key in ["surface_id", "surfaceId", "surface_ref", "surfaceRef"] {
+            guard let raw = object[key] as? String,
+                  let surfaceId = UUID(uuidString: raw.trimmingCharacters(in: .whitespacesAndNewlines))
+            else {
+                continue
+            }
+            return surfaceId
+        }
+        return nil
+    }
+
     var submittedPromptMessage: String? {
         guard hookEventName == .userPromptSubmit else { return nil }
         let contextMessage = context?.lastUserMessage.flatMap(Self.normalizedPromptText)

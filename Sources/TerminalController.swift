@@ -8512,31 +8512,37 @@ class TerminalController {
     }
 
     private nonisolated func v2ApplyIMessageModeSideEffects(for event: WorkstreamEvent) {
-        guard event.hookEventName == .userPromptSubmit || event.hookEventName == .stop || event.hookEventName == .subagentStop,
-              let rawWorkspaceId = event.workspaceId?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !rawWorkspaceId.isEmpty
-        else { return }
+        guard event.hookEventName == .userPromptSubmit || event.hookEventName == .stop || event.hookEventName == .subagentStop else {
+            return
+        }
+        let rawWorkspaceId = event.workspaceId?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let surfaceId = event.surfaceIdForRouting
+        guard (rawWorkspaceId?.isEmpty == false) || surfaceId != nil else { return }
 
         let iMessageModeEnabled = IMessageModeSettings.isEnabled()
         switch event.hookEventName {
         case .userPromptSubmit:
             v2MainSync {
-                guard let workspaceId = v2UUIDAny(rawWorkspaceId) else { return }
-                guard let tabManager = AppDelegate.shared?.tabManagerFor(tabId: workspaceId) else { return }
-                _ = tabManager.handlePromptSubmit(
-                    workspaceId: workspaceId,
+                guard let target = v2IMessageModeTarget(
+                    rawWorkspaceId: rawWorkspaceId,
+                    surfaceId: surfaceId
+                ) else { return }
+                _ = target.tabManager.handlePromptSubmit(
+                    workspaceId: target.workspaceId,
                     message: event.submittedPromptMessage,
                     iMessageModeEnabled: iMessageModeEnabled
                 )
             }
         case .stop, .subagentStop:
             let assistantFinalMessage = event.assistantFinalMessage
-            Task { @MainActor [weak self, rawWorkspaceId, assistantFinalMessage, iMessageModeEnabled] in
+            Task { @MainActor [weak self, rawWorkspaceId, surfaceId, assistantFinalMessage, iMessageModeEnabled] in
                 guard let self,
-                      let workspaceId = self.v2UUIDAny(rawWorkspaceId) else { return }
-                guard let tabManager = AppDelegate.shared?.tabManagerFor(tabId: workspaceId) else { return }
-                _ = tabManager.handleAssistantFinalMessage(
-                    workspaceId: workspaceId,
+                      let target = self.v2IMessageModeTarget(
+                          rawWorkspaceId: rawWorkspaceId,
+                          surfaceId: surfaceId
+                      ) else { return }
+                _ = target.tabManager.handleAssistantFinalMessage(
+                    workspaceId: target.workspaceId,
                     message: assistantFinalMessage,
                     iMessageModeEnabled: iMessageModeEnabled
                 )
@@ -8544,6 +8550,27 @@ class TerminalController {
         default:
             break
         }
+    }
+
+    @MainActor
+    private func v2IMessageModeTarget(
+        rawWorkspaceId: String?,
+        surfaceId: UUID?
+    ) -> (workspaceId: UUID, tabManager: TabManager)? {
+        if let surfaceId {
+            guard let owner = AppDelegate.shared?.locateSurface(surfaceId: surfaceId) else {
+                return nil
+            }
+            return (owner.workspaceId, owner.tabManager)
+        }
+
+        guard let rawWorkspaceId,
+              let workspaceId = v2UUIDAny(rawWorkspaceId),
+              let tabManager = AppDelegate.shared?.tabManagerFor(tabId: workspaceId)
+        else {
+            return nil
+        }
+        return (workspaceId, tabManager)
     }
 
     private nonisolated func v2FeedPermissionReply(params: [String: Any]) -> V2CallResult {

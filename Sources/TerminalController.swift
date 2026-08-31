@@ -6754,6 +6754,8 @@ class TerminalController {
                 let resolvedWindowIndex = mapped?.windowIndex ?? fallbackWindowMetadata.windowIndex
                 let workspace = mapped?.workspace
                 let panelId = mapped?.terminalPanel.id ?? terminalSurface.id
+                let agentPIDKeys = (workspace?.agentPIDKeysByPanelId[panelId] ?? []).sorted()
+                let restoredAgent = workspace?.restoredAgentSnapshotsByPanelId[panelId]
                 let portalState = hostedView.portalBindingGuardState()
                 let portalHostLease = terminalSurface.debugPortalHostLease()
                 let gitBranchState = workspace?.panelGitBranches[panelId]
@@ -6801,6 +6803,9 @@ class TerminalController {
                     "surface_focused": v2OrNull(workspace.map { panelId == $0.focusedPanelId }),
                     "surface_selected_in_pane": v2OrNull(mapped?.selectedInPane),
                     "surface_pinned": v2OrNull(workspace.map { $0.isPanelPinned(panelId) }),
+                    "agent_pid_keys": agentPIDKeys,
+                    "restored_agent_kind": v2OrNull(restoredAgent?.kind.rawValue),
+                    "restored_agent_session_id": v2OrNull(restoredAgent?.sessionId),
                     "surface_context": terminalSurface.debugSurfaceContextLabel(),
                     "surface_created_at": v2OrNull(iso8601String(terminalSurface.debugCreatedAt())),
                     "surface_age_seconds": v2OrNull(ageSeconds(since: terminalSurface.debugCreatedAt())),

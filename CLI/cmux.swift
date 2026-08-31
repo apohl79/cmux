@@ -17256,6 +17256,43 @@ struct CMUXCLI {
         return nil
     }
 
+    private struct LiveAgentHookTarget: Hashable {
+        let workspaceId: String
+        let surfaceId: String
+    }
+
+    private func resolveLiveAgentHookTarget(
+        sessionId: String,
+        agentName: String,
+        client: SocketClient
+    ) -> LiveAgentHookTarget? {
+        guard let sessionId = nonEmptyClaudeHookIdentifier(sessionId),
+              let agentName = nonEmptyClaudeHookIdentifier(agentName)?.lowercased(),
+              let payload = try? client.sendV2(method: "debug.terminals")
+        else {
+            return nil
+        }
+
+        let agentPIDKey = "\(agentName).\(sessionId)"
+        let terminals = payload["terminals"] as? [[String: Any]] ?? []
+        let matches = Set(terminals.compactMap { terminal -> LiveAgentHookTarget? in
+            let ownsAgentPIDKey = (terminal["agent_pid_keys"] as? [String])?.contains(agentPIDKey) == true
+            let ownsRestoredSession =
+                nonEmptyClaudeHookIdentifier(terminal["restored_agent_session_id"] as? String) == sessionId
+                && nonEmptyClaudeHookIdentifier(terminal["restored_agent_kind"] as? String)?.lowercased() == agentName
+            guard ownsAgentPIDKey || ownsRestoredSession,
+                  let workspaceId = nonEmptyClaudeHookIdentifier(terminal["workspace_id"] as? String),
+                  UUID(uuidString: workspaceId) != nil,
+                  let surfaceId = nonEmptyClaudeHookIdentifier(terminal["surface_id"] as? String),
+                  UUID(uuidString: surfaceId) != nil
+            else {
+                return nil
+            }
+            return LiveAgentHookTarget(workspaceId: workspaceId, surfaceId: surfaceId)
+        })
+        return matches.count == 1 ? matches.first : nil
+    }
+
     private func resolvePreferredSurfaceIdForClaudeHook(
         preferred: String?,
         fallback: String?,
@@ -21048,6 +21085,9 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
             ?? normalizedHookValue(env["CMUX_AGENT_LAUNCH_CWD"])
             ?? normalizedHookValue(env["PWD"])
         let sessionId = resolvedAgentHookSessionId(def: def, input: input, env: env, cwd: hookCwd)
+        let liveAgentTarget = hookWsFlag == nil && hookSurfaceFlag == nil
+            ? resolveLiveAgentHookTarget(sessionId: sessionId, agentName: def.name, client: client)
+            : nil
         let action = Self.subcommandActions[subcommand] ?? .noop
         let pidKey = "\(def.statusKey).\(sessionId.isEmpty ? "default" : sessionId)"
         var didSendFeedTelemetry = false
@@ -21071,13 +21111,18 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
         switch action {
         case .sessionStart:
             let mapped = sessionId.isEmpty ? nil : (try? store.lookup(sessionId: sessionId))
-            let workspaceId = try resolvePreferredWorkspaceIdForClaudeHook(
+            let workspaceId = try liveAgentTarget?.workspaceId ?? resolvePreferredWorkspaceIdForClaudeHook(
                 preferred: nil,
                 fallback: workspaceArg,
                 surfaceHint: ambientSurfaceArg,
                 client: client
             )
-            let surfaceId = try resolvePreferredSurfaceIdForClaudeHook(preferred: nil, fallback: surfaceArg, workspaceId: workspaceId, client: client)
+            let surfaceId = try liveAgentTarget?.surfaceId ?? resolvePreferredSurfaceIdForClaudeHook(
+                preferred: nil,
+                fallback: surfaceArg,
+                workspaceId: workspaceId,
+                client: client
+            )
             sendAgentFeedTelemetry(workspaceId: workspaceId, surfaceId: surfaceId)
             let pid = inferredCodexAgentPID()
             let launchCommand = agentLaunchCommandFromEnvironment(
@@ -21105,13 +21150,13 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
 
         case .promptSubmit:
             let mapped = sessionId.isEmpty ? nil : (try? store.lookup(sessionId: sessionId))
-            let workspaceId = try resolvePreferredWorkspaceIdForClaudeHook(
+            let workspaceId = try liveAgentTarget?.workspaceId ?? resolvePreferredWorkspaceIdForClaudeHook(
                 preferred: workspaceArg,
                 fallback: mapped?.workspaceId,
                 surfaceHint: ambientSurfaceArg,
                 client: client
             )
-            let surfaceId = try resolvePreferredSurfaceIdForClaudeHook(
+            let surfaceId = try liveAgentTarget?.surfaceId ?? resolvePreferredSurfaceIdForClaudeHook(
                 preferred: surfaceArg,
                 fallback: mapped?.surfaceId,
                 workspaceId: workspaceId,
@@ -21189,13 +21234,18 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
             }
             do {
                 let mapped = sessionId.isEmpty ? nil : (try? store.lookup(sessionId: sessionId))
-                let workspaceId = try resolvePreferredWorkspaceIdForClaudeHook(
+                let workspaceId = try liveAgentTarget?.workspaceId ?? resolvePreferredWorkspaceIdForClaudeHook(
                     preferred: workspaceArg,
                     fallback: mapped?.workspaceId,
                     surfaceHint: ambientSurfaceArg,
                     client: client
                 )
-                let surfaceId = try resolvePreferredSurfaceIdForClaudeHook(preferred: surfaceArg, fallback: mapped?.surfaceId, workspaceId: workspaceId, client: client)
+                let surfaceId = try liveAgentTarget?.surfaceId ?? resolvePreferredSurfaceIdForClaudeHook(
+                    preferred: surfaceArg,
+                    fallback: mapped?.surfaceId,
+                    workspaceId: workspaceId,
+                    client: client
+                )
                 sendAgentFeedTelemetry(workspaceId: workspaceId, surfaceId: surfaceId)
                 let pid = mapped?.pid ?? inferredCodexAgentPID()
                 let codexFailure: CodexHookFailureSummary?

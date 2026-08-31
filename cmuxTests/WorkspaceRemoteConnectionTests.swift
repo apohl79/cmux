@@ -1963,6 +1963,92 @@ final class CLINotifyProcessIntegrationTests: XCTestCase {
         XCTAssertEqual(persistedEnvironment, ["CODEX_HOME": "/tmp/codex home"])
     }
 
+    func testCodexHookStopRoutesSessionToLivePaneWhenEnvironmentIsStale() throws {
+        let cliPath = try bundledCLIPath()
+        let socketPath = makeSocketPath("codex-live-route")
+        let listenerFD = try bindUnixSocket(at: socketPath)
+        let state = MockSocketServerState()
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cmux-codex-live-route-\(UUID().uuidString)", isDirectory: true)
+        let staleWorkspaceId = "11111111-1111-1111-1111-111111111111"
+        let staleSurfaceId = "22222222-2222-2222-2222-222222222222"
+        let liveWorkspaceId = "33333333-3333-3333-3333-333333333333"
+        let liveSurfaceId = "44444444-4444-4444-4444-444444444444"
+        let sessionId = "codex-live-session"
+
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer {
+            Darwin.close(listenerFD)
+            unlink(socketPath)
+            try? FileManager.default.removeItem(at: root)
+        }
+
+        let serverHandled = startMockServer(listenerFD: listenerFD, state: state) { line in
+            guard let data = line.data(using: .utf8),
+                  let payload = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any],
+                  let id = payload["id"] as? String,
+                  let method = payload["method"] as? String else {
+                return "OK"
+            }
+            if method == "debug.terminals" {
+                return self.v2Response(
+                    id: id,
+                    ok: true,
+                    result: [
+                        "count": 1,
+                        "terminals": [[
+                            "workspace_id": liveWorkspaceId,
+                            "surface_id": liveSurfaceId,
+                            "agent_pid_keys": ["codex.\(sessionId)"],
+                        ]],
+                    ]
+                )
+            }
+            return self.v2Response(id: id, ok: true, result: [:])
+        }
+
+        var environment = ProcessInfo.processInfo.environment
+        environment["CMUX_SOCKET_PATH"] = socketPath
+        environment["CMUX_WORKSPACE_ID"] = staleWorkspaceId
+        environment["CMUX_SURFACE_ID"] = staleSurfaceId
+        environment["CMUX_AGENT_HOOK_STATE_DIR"] = root.path
+        environment["CMUX_CLI_SENTRY_DISABLED"] = "1"
+        environment["CMUX_CLAUDE_HOOK_SENTRY_DISABLED"] = "1"
+        environment["CODEX_HOME"] = root.appendingPathComponent("codex-home", isDirectory: true).path
+
+        let hookInput = """
+        {"session_id":"\(sessionId)","turn_id":"turn-1","cwd":"\(root.path)","hook_event_name":"Stop","last_assistant_message":"Done."}
+        """
+        let result = runProcess(
+            executablePath: cliPath,
+            arguments: ["hooks", "codex", "stop"],
+            environment: environment,
+            standardInput: hookInput,
+            timeout: 5
+        )
+
+        wait(for: [serverHandled], timeout: 5)
+        XCTAssertFalse(result.timedOut, result.stderr)
+        XCTAssertEqual(result.status, 0, result.stderr)
+        XCTAssertEqual(result.stdout, "{}\n")
+        XCTAssertTrue(
+            state.commands.contains { command in
+                command.contains("set_status codex Idle")
+                    && command.contains("--tab=\(liveWorkspaceId)")
+                    && command.contains("--panel=\(liveSurfaceId)")
+            },
+            "Expected Codex Stop to target the session's live pane, saw \(state.commands)"
+        )
+        XCTAssertFalse(
+            state.commands.contains { command in
+                command.contains("set_status codex Idle")
+                    && (command.contains("--tab=\(staleWorkspaceId)")
+                        || command.contains("--panel=\(staleSurfaceId)"))
+            },
+            "Codex Stop should not target stale environment IDs, saw \(state.commands)"
+        )
+    }
+
     func testCodexHookStopSetsRateLimitStatusFromTranscript() throws {
         let cliPath = try bundledCLIPath()
         let socketPath = makeSocketPath("codex")

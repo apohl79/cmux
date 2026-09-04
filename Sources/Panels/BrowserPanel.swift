@@ -1054,10 +1054,16 @@ func browserShouldOpenURLExternally(_ url: URL) -> Bool {
 }
 
 enum BrowserUserAgentSettings {
-    // Force a Safari UA. Some WebKit builds return a minimal UA without Version/Safari tokens,
-    // and some installs may have legacy Chrome UA overrides. Both can cause Google to serve
-    // fallback/old UIs or trigger bot checks.
-    static let safariUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.2 Safari/605.1.15"
+    // URLSession requests do not inherit WebKit's user agent, so auxiliary
+    // browser fetches provide a conventional Safari identity of their own.
+    static let auxiliaryRequestUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.2 Safari/605.1.15"
+
+    /// Preserve WKWebView's native embedded-browser identity. Pretending to be
+    /// standalone Safari makes capability-sensitive sites such as Google Docs
+    /// select Safari-only canvas behavior that WKWebView does not share.
+    static func applyEmbeddedWebKitIdentity(to webView: WKWebView) {
+        webView.customUserAgent = nil
+    }
 }
 
 func normalizedBrowserHistoryNamespace(bundleIdentifier: String) -> String {
@@ -1811,7 +1817,7 @@ actor BrowserSearchSuggestionService {
         var req = URLRequest(url: url)
         req.timeoutInterval = 0.65
         req.cachePolicy = .returnCacheDataElseLoad
-        req.setValue(BrowserUserAgentSettings.safariUserAgent, forHTTPHeaderField: "User-Agent")
+        req.setValue(BrowserUserAgentSettings.auxiliaryRequestUserAgent, forHTTPHeaderField: "User-Agent")
         req.setValue("en-US,en;q=0.9", forHTTPHeaderField: "Accept-Language")
 
         let data: Data
@@ -2684,8 +2690,7 @@ final class BrowserPanel: Panel, ObservableObject {
         // white before content loads. Do not force page appearance or inject color-scheme CSS;
         // websites must keep control of their own theme.
         webView.underPageBackgroundColor = GhosttyBackgroundTheme.currentColor()
-        // Always present as Safari.
-        webView.customUserAgent = BrowserUserAgentSettings.safariUserAgent
+        BrowserUserAgentSettings.applyEmbeddedWebKitIdentity(to: webView)
         return webView
     }
 
@@ -3732,7 +3737,7 @@ final class BrowserPanel: Panel, ObservableObject {
             var req = URLRequest(url: iconURL)
             req.timeoutInterval = 2.0
             req.cachePolicy = .returnCacheDataElseLoad
-            req.setValue(BrowserUserAgentSettings.safariUserAgent, forHTTPHeaderField: "User-Agent")
+            req.setValue(BrowserUserAgentSettings.auxiliaryRequestUserAgent, forHTTPHeaderField: "User-Agent")
             let effectiveRequest = remoteProxyPreparedRequest(from: req, logScope: "faviconRewrite")
 
             let data: Data
@@ -4027,8 +4032,8 @@ final class BrowserPanel: Panel, ObservableObject {
             abandonRestoredSessionHistoryIfNeeded()
         }
         let effectiveRequest = remoteProxyPreparedRequest(from: request, logScope: "rewrite")
-        // Some installs can end up with a legacy Chrome UA override; keep this pinned.
-        webView.customUserAgent = BrowserUserAgentSettings.safariUserAgent
+        // Clear stale per-view overrides before every top-level navigation.
+        BrowserUserAgentSettings.applyEmbeddedWebKitIdentity(to: webView)
         restoredSessionShouldRenderWebView = nil
         shouldRenderWebView = true
         if recordTypedNavigation {
@@ -4531,7 +4536,7 @@ extension BrowserPanel {
 
     /// Reload the current page
     func reload() {
-        webView.customUserAgent = BrowserUserAgentSettings.safariUserAgent
+        BrowserUserAgentSettings.applyEmbeddedWebKitIdentity(to: webView)
         if Self.serializableSessionHistoryURLString(Self.remoteProxyDisplayURL(for: webView.url)) == nil {
             let fallbackURL = resolvedCurrentSessionHistoryURL()
                 ?? Self.remoteProxyDisplayURL(for: navigationDelegate?.lastAttemptedURL)

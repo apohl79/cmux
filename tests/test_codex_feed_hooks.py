@@ -504,28 +504,17 @@ def run_feed_hook(cli_path: str, socket_path: Path, payload: dict, decision: dic
                 f"hooks feed failed exit={result.returncode}\nstdout={result.stdout}\nstderr={result.stderr}"
             )
         if not fake.frames:
-            raise AssertionError("hooks feed did not send feed.push")
+            raise AssertionError("hooks feed did not send a cmux socket command")
         stdout = json.loads(result.stdout.strip() or "{}")
-        return stdout, fake.frames[0]
-
-
-def assert_permission_output(stdout: dict, behavior: str) -> None:
-    hook_output = stdout.get("hookSpecificOutput")
-    if not isinstance(hook_output, dict):
-        raise AssertionError(f"missing hookSpecificOutput: {stdout!r}")
-    if hook_output.get("hookEventName") != "PermissionRequest":
-        raise AssertionError(f"wrong hook event output: {stdout!r}")
-    decision = hook_output.get("decision")
-    if not isinstance(decision, dict) or decision.get("behavior") != behavior:
-        raise AssertionError(f"wrong permission behavior: {stdout!r}")
-
-
-def assert_codex_allow_has_no_persistent_fields(stdout: dict) -> None:
-    decision = stdout["hookSpecificOutput"]["decision"]
-    forbidden = {"updatedInput", "updatedPermissions", "setMode", "remember"}
-    present = forbidden.intersection(decision)
-    if present:
-        raise AssertionError(f"Codex permission output included unsupported fields {present}: {stdout!r}")
+        status_frame = next(
+            (
+                frame
+                for frame in fake.frames
+                if frame.get("raw", "").startswith("set_status codex ")
+            ),
+            fake.frames[0],
+        )
+        return stdout, status_frame
 
 
 def codex_command_hook_hash(
@@ -699,7 +688,7 @@ def test_install_adds_codex_permission_request_hook(cli_path: str, root: Path) -
 
     hooks = json.loads((codex_home / "hooks.json").read_text(encoding="utf-8"))
     hook_groups = hooks.get("hooks", {})
-    for event_name in ["PreToolUse", "PermissionRequest"]:
+    for event_name in ["PreToolUse", "PermissionRequest", "PostToolUse"]:
         groups = hook_groups.get(event_name)
         if not groups:
             raise AssertionError(f"missing {event_name} hook group: {hooks!r}")
@@ -1516,7 +1505,7 @@ def test_install_codex_hooks_preserves_config_when_toml_read_fails(cli_path: str
         )
 
 
-def test_permission_reply_uses_codex_permission_request_schema(cli_path: str, root: Path) -> None:
+def test_permission_request_marks_codex_waiting_without_blocking(cli_path: str, root: Path) -> None:
     socket_path = root / "cmux.sock"
     payload = {
         "session_id": "codex-session",
@@ -1531,47 +1520,29 @@ def test_permission_reply_uses_codex_permission_request_schema(cli_path: str, ro
         cli_path,
         socket_path,
         payload,
-        {"kind": "permission", "mode": "once"},
+        None,
     )
-    assert_permission_output(stdout, "allow")
-    params = frame["params"]
-    if params.get("wait_timeout_seconds") != 120:
-        raise AssertionError(f"PermissionRequest should block for Feed reply: {frame!r}")
-    event = params["event"]
-    if event.get("hook_event_name") != "PermissionRequest" or event.get("_source") != "codex":
-        raise AssertionError(f"wrong feed event: {event!r}")
+    if stdout != {}:
+        raise AssertionError(f"Codex PermissionRequest should return immediately: {stdout!r}")
+    raw = frame.get("raw", "")
+    if not raw.startswith("set_status codex Waiting for approval"):
+        raise AssertionError(f"Codex PermissionRequest should mark the tab waiting: {frame!r}")
+    if "--color=#FFCC00" not in raw or "--icon=bell.fill" not in raw:
+        raise AssertionError(f"Codex waiting status should be yellow with a bell icon: {frame!r}")
 
-    stdout, _ = run_feed_hook(
+    stdout, frame = run_feed_hook(
         cli_path,
-        root / "cmux-deny.sock",
-        payload,
-        {"kind": "permission", "mode": "deny"},
+        root / "cmux-post-tool.sock",
+        {**payload, "hook_event_name": "PostToolUse"},
+        None,
     )
-    assert_permission_output(stdout, "deny")
-    message = stdout["hookSpecificOutput"]["decision"].get("message", "")
-    if "denied" not in message:
-        raise AssertionError(f"deny output should include a message: {stdout!r}")
-
-
-def test_codex_persistent_permission_modes_degrade_to_once(cli_path: str, root: Path) -> None:
-    payload = {
-        "session_id": "codex-session",
-        "turn_id": "turn-persistent",
-        "cwd": "/tmp/project",
-        "hook_event_name": "PermissionRequest",
-        "tool_name": "Bash",
-        "tool_input": {"command": "printf hi"},
-    }
-
-    for mode in ["always", "all", "bypass"]:
-        stdout, _ = run_feed_hook(
-            cli_path,
-            root / f"cmux-{mode}.sock",
-            payload,
-            {"kind": "permission", "mode": mode},
-        )
-        assert_permission_output(stdout, "allow")
-        assert_codex_allow_has_no_persistent_fields(stdout)
+    if stdout != {}:
+        raise AssertionError(f"Codex PostToolUse should return immediately: {stdout!r}")
+    raw = frame.get("raw", "")
+    if not raw.startswith("set_status codex Running"):
+        raise AssertionError(f"Codex PostToolUse should restore the running status: {frame!r}")
+    if "--color=#4C8DFF" not in raw or "--icon=bolt.fill" not in raw:
+        raise AssertionError(f"Codex running status should be blue with a bolt icon: {frame!r}")
 
 
 def test_codex_pre_tool_use_is_telemetry_not_actionable(cli_path: str, root: Path) -> None:
@@ -1633,8 +1604,7 @@ def main() -> int:
             test_install_surfaces_invalid_codex_config_encoding(cli_path, root)
             test_uninstall_surfaces_invalid_codex_config_encoding(cli_path, root)
             test_install_codex_hooks_preserves_config_when_toml_read_fails(cli_path, root)
-            test_permission_reply_uses_codex_permission_request_schema(cli_path, root)
-            test_codex_persistent_permission_modes_degrade_to_once(cli_path, root)
+            test_permission_request_marks_codex_waiting_without_blocking(cli_path, root)
             test_codex_pre_tool_use_is_telemetry_not_actionable(cli_path, root)
         except Exception as exc:
             print(f"FAIL: {exc}")

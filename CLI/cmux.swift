@@ -23260,13 +23260,62 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
             event: rawEvent,
             toolName: toolName
         )
+        let env = ProcessInfo.processInfo.environment
+
+        // Codex owns the approval interaction in its TUI. Keep cmux's
+        // workspace state visible without making Codex wait for a second
+        // approval surface in Feed.
+        if source == "codex",
+           hookEventName == "PermissionRequest" || hookEventName == "PostToolUse" {
+            let workspaceId = try? resolvePreferredWorkspaceIdForClaudeHook(
+                preferred: nil,
+                fallback: feedWorkspaceId(
+                    rawObject: stdinObj,
+                    fallback: env["CMUX_WORKSPACE_ID"]
+                ),
+                surfaceHint: feedSurfaceId(
+                    rawObject: stdinObj,
+                    fallback: env["CMUX_SURFACE_ID"]
+                ),
+                client: client
+            )
+            if let workspaceId {
+                let surfaceId = feedSurfaceId(
+                    rawObject: stdinObj,
+                    fallback: env["CMUX_SURFACE_ID"]
+                )
+                let statusValue: String
+                let icon: String
+                let color: String
+                if hookEventName == "PermissionRequest" {
+                    statusValue = String(
+                        localized: "agent.codex.status.waitingForApproval",
+                        defaultValue: "Waiting for approval"
+                    )
+                    icon = "bell.fill"
+                    color = "#FFCC00"
+                } else {
+                    statusValue = String(
+                        localized: "agent.codex.status.running",
+                        defaultValue: "Running"
+                    )
+                    icon = "bolt.fill"
+                    color = "#4C8DFF"
+                }
+                _ = try? sendV1Command(
+                    "set_status codex \(statusValue) --icon=\(icon) --color=\(color) --priority=100 --tab=\(workspaceId)\(socketPanelOption(surfaceId))",
+                    client: client
+                )
+            }
+            print("{}")
+            return
+        }
 
         // Capture the agent's PID (not our subprocess PID) so the
         // Feed can auto-expire pending cards when the agent is
         // killed/crashed. Claude's wrapper exports CMUX_CLAUDE_PID.
         // Other agents fall back to getppid() which walks up one
         // level — close enough to catch most kill scenarios.
-        let env = ProcessInfo.processInfo.environment
         let agentPid: Int = {
             let envKey: String
             switch source {

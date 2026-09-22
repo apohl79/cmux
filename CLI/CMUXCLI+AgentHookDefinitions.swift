@@ -108,7 +108,7 @@ extension CMUXCLI {
                 .init(agentEvent: "UserPromptSubmit", cmuxSubcommand: "prompt-submit"),
                 .init(agentEvent: "Stop", cmuxSubcommand: "stop"),
             ],
-            feedHookEvents: ["PreToolUse", "PermissionRequest"],
+            feedHookEvents: ["PreToolUse", "PermissionRequest", "PostToolUse"],
             postInstallAction: .codexConfigToml
         ),
         AgentHookDef(

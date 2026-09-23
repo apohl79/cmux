@@ -11,7 +11,7 @@ Usage: ./scripts/install-fork.sh [options]
 
 Downloads the fork release zip from apohl79/cmux and installs it. If the release
 asset is unavailable, calls ./scripts/build-fork.sh to build/sign/notarize,
-create the release if needed, upload the zip with --clobber, then installs it.
+create the release if needed, replace the matching asset, then installs it.
 After installation, refreshes Codex hooks and validates the bundled Claude Code
 wrapper used to inject current hooks into new sessions.
 
@@ -147,7 +147,9 @@ build_release_asset() {
     --asset-name "$ASSET_NAME"
     --output-dir "$DOWNLOAD_DIR"
   )
-  build_cmd+=("${BUILD_ARGS[@]}")
+  if [[ "${#BUILD_ARGS[@]}" -gt 0 ]]; then
+    build_cmd+=("${BUILD_ARGS[@]}")
+  fi
 
   log "building fork release asset via build-fork.sh"
   "${build_cmd[@]}"

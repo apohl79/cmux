@@ -36,7 +36,16 @@ is_name_collision() {
     grep -Eq 'HTTP 422|ReleaseAsset\.name already exists'
 }
 
-wait_for_asset_visibility() {
+asset_id_was_preexisting() {
+  local existing_id
+
+  while IFS= read -r existing_id; do
+    [[ "$existing_id" == "$1" ]] && return 0
+  done <<<"$preexisting_asset_ids"
+  return 1
+}
+
+wait_for_replacement_visibility() {
   local attempt asset_id asset_name assets probe_output
   local attempts="${RELEASE_ASSET_VISIBILITY_ATTEMPTS:-30}"
   local delay="${RELEASE_ASSET_VISIBILITY_DELAY_SECONDS:-2}"
@@ -46,7 +55,9 @@ wait_for_asset_visibility() {
     if assets="$(gh api "repos/$FORK_REPO/releases/tags/$TAG" \
       --jq '.assets[] | [.id, .name] | @tsv' 2>&1)"; then
       while IFS=$'\t' read -r asset_id asset_name; do
-        if [[ "$asset_id" =~ ^[0-9]+$ && "$asset_name" == "$ASSET_NAME" ]]; then
+        if [[ "$asset_id" =~ ^[0-9]+$ &&
+          "$asset_name" == "$ASSET_NAME" ]] &&
+          ! asset_id_was_preexisting "$asset_id"; then
           probe_output=""
           if probe_output="$(gh api \
             "repos/$FORK_REPO/releases/assets/$asset_id" 2>&1)"; then
@@ -80,9 +91,11 @@ while IFS=$'\t' read -r asset_id asset_name; do
 done <<<"$release_assets"
 
 accessible_asset_ids=""
+preexisting_asset_ids=""
 zombie_asset_detected=0
 while IFS=$'\t' read -r asset_id asset_name; do
   [[ "$asset_id" =~ ^[0-9]+$ && "$asset_name" == "$ASSET_NAME" ]] || continue
+  preexisting_asset_ids="${preexisting_asset_ids}${asset_id}"$'\n'
 
   probe_output=""
   if probe_output="$(gh api \
@@ -123,24 +136,30 @@ else
   done <<<"$accessible_asset_ids"
 fi
 
-log "uploading $ASSET_NAME"
+upload_attempts="${RELEASE_ASSET_UPLOAD_ATTEMPTS:-3}"
 upload_output=""
-if upload_output="$(gh release upload "$TAG" "$ASSET_PATH" \
-  --repo "$FORK_REPO" 2>&1)"; then
-  :
-else
-  upload_status=$?
-  if ! is_name_collision "$upload_output"; then
-    printf '%s\n' "$upload_output" >&2
-    exit "$upload_status"
+for ((upload_attempt = 1; upload_attempt <= upload_attempts; upload_attempt++)); do
+  log "uploading $ASSET_NAME (attempt $upload_attempt/$upload_attempts)"
+  if upload_output="$(gh release upload "$TAG" "$ASSET_PATH" \
+    --repo "$FORK_REPO" 2>&1)"; then
+    :
+  else
+    upload_status=$?
+    if ! is_name_collision "$upload_output"; then
+      printf '%s\n' "$upload_output" >&2
+      exit "$upload_status"
+    fi
+    log "asset name is reserved; waiting for the completed upload to become visible"
   fi
-  log "asset name is reserved; waiting for the completed upload to become visible"
-fi
 
-if ! wait_for_asset_visibility; then
-  printf '%s\n' "$upload_output" >&2
-  echo "error: uploaded asset did not become visible: $FORK_REPO@$TAG/$ASSET_NAME" >&2
-  exit 1
-fi
+  if wait_for_replacement_visibility; then
+    log "release asset is visible: $ASSET_NAME"
+    exit 0
+  fi
 
-log "release asset is visible: $ASSET_NAME"
+  log "replacement asset is still unavailable after upload attempt $upload_attempt"
+done
+
+printf '%s\n' "$upload_output" >&2
+echo "error: uploaded asset did not become visible: $FORK_REPO@$TAG/$ASSET_NAME" >&2
+exit 1

@@ -45,6 +45,11 @@ if [[ "$1" == "api" && "$2" == *"/releases/tags/"* ]]; then
     exit 0
   fi
 
+  if [[ "$(grep -c 'release upload' "$GH_CALL_LOG" || true)" -ge 1 ]]; then
+    printf '%s\n' $'583459102\tcmux-test-macos.zip'
+    exit 0
+  fi
+
   if [[ "${GH_ASSET_MODE:-duplicates}" == "unrelated" ]]; then
     printf '%s\n' \
       $'544133625\tcmux-test-macos.zip' \

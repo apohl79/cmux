@@ -24,7 +24,8 @@ ASSET_NAME="$4"
 log() { printf '==> %s\n' "$*"; }
 
 is_http_404() {
-  [[ "$1" == *"HTTP 404: Not Found"* ]]
+  printf '%s\n' "$1" |
+    grep -Eq 'HTTP 404|"status"[[:space:]]*:[[:space:]]*"?404"?'
 }
 
 release_assets=""

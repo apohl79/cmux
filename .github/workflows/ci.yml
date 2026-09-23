@@ -45,6 +45,9 @@ jobs:
       - name: Validate fork release asset replacement
         run: ./tests/test_build_fork_release_asset_replacement.sh
 
+      - name: Validate fork installer local fallback
+        run: ./tests/test_install_fork_local_fallback.sh
+
       - name: Validate current GhosttyKit checksum pin
         run: ./tests/test_ci_ghosttykit_checksum_present.sh
 

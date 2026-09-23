@@ -4,14 +4,14 @@ set -euo pipefail
 
 usage() {
   cat <<'EOF'
-Usage: replace-fork-release-asset.sh <repo> <tag> <asset-path> <asset-name>
+Usage: replace-fork-release-asset.sh <repo> <tag> <asset-path> <asset-name> <title> <notes>
 
 Removes every release asset with the requested name, tolerating stale asset
 IDs that GitHub reports as already absent, then uploads the replacement.
 EOF
 }
 
-if [[ $# -ne 4 ]]; then
+if [[ $# -ne 6 ]]; then
   usage >&2
   exit 2
 fi
@@ -20,6 +20,9 @@ FORK_REPO="$1"
 TAG="$2"
 ASSET_PATH="$3"
 ASSET_NAME="$4"
+RELEASE_TITLE="$5"
+RELEASE_NOTES="$6"
+: "$RELEASE_TITLE" "$RELEASE_NOTES"
 
 log() { printf '==> %s\n' "$*"; }
 

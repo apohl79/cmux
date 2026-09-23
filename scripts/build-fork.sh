@@ -537,7 +537,9 @@ if [[ "$UPLOAD" == "1" ]]; then
     "$FORK_REPO" \
     "$TAG" \
     "$ZIP_PATH" \
-    "$ASSET_NAME"
+    "$ASSET_NAME" \
+    "$VERSION" \
+    "Fork build for cmux ${OFFICIAL_VERSION}."
 fi
 
 log "fork build ready"

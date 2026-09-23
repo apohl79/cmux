@@ -26,6 +26,17 @@ set -euo pipefail
 printf '%s\n' "$*" >>"$GH_CALL_LOG"
 
 if [[ "$1" == "api" && "$2" == *"/releases/tags/"* ]]; then
+  if [[ "${GH_ASSET_MODE:-duplicates}" == "stale_id" ]]; then
+    upload_count="$(grep -c 'release upload' "$GH_CALL_LOG" || true)"
+    asset_view_count="$(grep -c '/releases/tags/' "$GH_CALL_LOG")"
+    if [[ "$upload_count" -eq 0 || "$asset_view_count" -eq 2 ]]; then
+      printf '%s\n' $'544133627\tcmux-test-macos.zip'
+    elif [[ "$upload_count" -ge 2 ]]; then
+      printf '%s\n' $'583459102\tcmux-test-macos.zip'
+    fi
+    exit 0
+  fi
+
   if [[ "${GH_ASSET_MODE:-duplicates}" == "eventual" ]]; then
     asset_view_count="$(grep -c '/releases/tags/' "$GH_CALL_LOG")"
     if [[ "$asset_view_count" -ge 3 ]]; then
@@ -87,6 +98,16 @@ if [[ "$1" == "api" && "$2" == "--method" ]]; then
 fi
 
 if [[ "$1" == "release" && "$2" == "upload" ]]; then
+  if [[ "${GH_UPLOAD_MODE:-success}" == "stale_id" ]]; then
+    upload_count="$(grep -c 'release upload' "$GH_CALL_LOG")"
+    if [[ "$upload_count" -eq 1 ]]; then
+      echo 'HTTP 422: Validation Failed' >&2
+      echo 'ReleaseAsset.name already exists' >&2
+      exit 1
+    fi
+    exit 0
+  fi
+
   if [[ "${GH_UPLOAD_MODE:-success}" == "already_exists" ]]; then
     echo 'HTTP 422: Validation Failed (https://api.github.com/repos/apohl79/cmux/releases/394506541/assets)' >&2
     echo 'ReleaseAsset.name already exists' >&2
@@ -207,5 +228,22 @@ export GH_UPLOAD_MODE=already_exists
   fail "did not make exactly one upload attempt during eventual consistency"
 [[ "$(grep -c '/releases/tags/' "$CALL_LOG")" -ge 3 ]] ||
   fail "did not poll until the uploaded asset became visible"
+
+: >"$CALL_LOG"
+export GH_ASSET_MODE=stale_id
+export GH_UPLOAD_MODE=stale_id
+
+"$HELPER" \
+  apohl79/cmux \
+  test-tag \
+  "$asset_path" \
+  cmux-test-macos.zip \
+  test-title \
+  test-notes
+
+[[ "$(grep -c 'release upload' "$CALL_LOG")" -eq 2 ]] ||
+  fail "did not retry upload after the stale asset ID disappeared"
+grep -Fq 'releases/assets/583459102' "$CALL_LOG" ||
+  fail "did not verify the replacement asset ID"
 
 echo "PASS: fork release asset replacement repairs zombie assets without risking unrelated assets"

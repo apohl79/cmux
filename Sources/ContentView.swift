@@ -13184,7 +13184,6 @@ struct SidebarWorkspaceSnapshotBuilder {
         let title: String
         let customDescription: String?
         let isPinned: Bool
-        let agentNeedsInput: Bool
         let customColorHex: String?
         let remoteWorkspaceSidebarText: String?
         let remoteConnectionStatusText: String
@@ -13204,17 +13203,6 @@ struct SidebarWorkspaceSnapshotBuilder {
         let pullRequestRows: [PullRequestDisplay]
         let listeningPorts: [Int]
 
-    }
-}
-
-enum SidebarWorkspaceAgentAttentionMarker {
-    static func needsUserInput(statusEntries: [String: SidebarStatusEntry]) -> Bool {
-        guard let status = statusEntries["codex"],
-              status.icon == "bell.fill",
-              status.color?.caseInsensitiveCompare("#FFCC00") == .orderedSame else {
-            return false
-        }
-        return true
     }
 }
 
@@ -13657,20 +13645,6 @@ struct TabItemView: View, Equatable {
                             .foregroundColor(activeUnreadBadgeTextColor)
                     }
                     .frame(width: scaledUnreadBadgeSize, height: scaledUnreadBadgeSize)
-                }
-
-                if workspaceSnapshot.agentNeedsInput {
-                    Image(systemName: "bell.fill")
-                        .font(.system(size: 8, weight: .semibold))
-                        .foregroundColor(.black.opacity(0.8))
-                        .frame(width: 16, height: 16)
-                        .background(Circle().fill(Color(hex: "#FFCC00") ?? .yellow))
-                        .safeHelp(
-                            String(
-                                localized: "sidebar.workspace.agentNeedsInput",
-                                defaultValue: "Codex needs input"
-                            )
-                        )
                 }
 
                 if workspaceSnapshot.isPinned {
@@ -14712,9 +14686,6 @@ struct TabItemView: View, Equatable {
             title: tab.title,
             customDescription: settings.showsWorkspaceDescription ? sidebarVisibleCustomDescription : nil,
             isPinned: tab.isPinned,
-            agentNeedsInput: SidebarWorkspaceAgentAttentionMarker.needsUserInput(
-                statusEntries: tab.statusEntries
-            ),
             customColorHex: tab.customColor,
             remoteWorkspaceSidebarText: remoteWorkspaceSidebarText,
             remoteConnectionStatusText: remoteConnectionStatusText,

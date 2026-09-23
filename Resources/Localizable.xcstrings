@@ -48661,23 +48661,6 @@
         }
       }
     },
-    "sidebar.workspace.agentNeedsInput": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Codex needs input"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Codex 入力待ち"
-          }
-        }
-      }
-    },
     "agent.codex.input.subtitle.waiting": {
       "extractionState": "manual",
       "localizations": {

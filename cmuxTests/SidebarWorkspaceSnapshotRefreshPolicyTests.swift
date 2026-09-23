@@ -94,7 +94,6 @@ final class SidebarWorkspaceSnapshotRefreshPolicyTests: XCTestCase {
         title: String = "workspace",
         customDescription: String? = nil,
         isPinned: Bool = false,
-        agentNeedsInput: Bool = false,
         customColorHex: String? = nil,
         remoteConnectionStatusText: String = "Disconnected",
         latestConversationMessage: String? = nil,
@@ -105,7 +104,6 @@ final class SidebarWorkspaceSnapshotRefreshPolicyTests: XCTestCase {
             title: title,
             customDescription: customDescription,
             isPinned: isPinned,
-            agentNeedsInput: agentNeedsInput,
             customColorHex: customColorHex,
             remoteWorkspaceSidebarText: nil,
             remoteConnectionStatusText: remoteConnectionStatusText,
@@ -147,38 +145,6 @@ final class SidebarWorkspaceSnapshotRefreshPolicyTests: XCTestCase {
             showsGitBranch: showsGitBranch,
             usesViewportAwarePath: usesViewportAwarePath,
             visibleAuxiliaryDetails: visibleAuxiliaryDetails
-        )
-    }
-}
-
-final class SidebarWorkspaceAgentAttentionMarkerTests: XCTestCase {
-    func testCodexYellowBellStatusShowsNeedsInputMarker() {
-        XCTAssertTrue(
-            SidebarWorkspaceAgentAttentionMarker.needsUserInput(
-                statusEntries: [
-                    "codex": SidebarStatusEntry(
-                        key: "codex",
-                        value: "Codex needs input",
-                        icon: "bell.fill",
-                        color: "#FFCC00"
-                    )
-                ]
-            )
-        )
-    }
-
-    func testNonWaitingCodexStatusDoesNotShowNeedsInputMarker() {
-        XCTAssertFalse(
-            SidebarWorkspaceAgentAttentionMarker.needsUserInput(
-                statusEntries: [
-                    "codex": SidebarStatusEntry(
-                        key: "codex",
-                        value: "Running",
-                        icon: "bolt.fill",
-                        color: "#4C8DFF"
-                    )
-                ]
-            )
         )
     }
 }

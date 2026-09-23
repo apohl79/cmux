@@ -4971,7 +4971,7 @@ final class CLINotifyProcessIntegrationTests: XCTestCase {
             waitForSocketCommand(state: state, timeout: 5) { command in
                 command.contains("set_status codex Codex needs input") &&
                     command.contains("--icon=bell.fill") &&
-                    command.contains("--color=#FFCC00") &&
+                    command.contains("--color=#4C8DFF") &&
                     command.contains("--priority=100") &&
                     command.contains("--tab=\(workspaceId)")
             },
@@ -5071,7 +5071,7 @@ final class CLINotifyProcessIntegrationTests: XCTestCase {
             waitForSocketCommand(state: state, timeout: 5) { command in
                 command.contains("set_status codex Codex needs input") &&
                     command.contains("--icon=bell.fill") &&
-                    command.contains("--color=#FFCC00") &&
+                    command.contains("--color=#4C8DFF") &&
                     command.contains("--priority=100") &&
                     command.contains("--tab=\(workspaceId)")
             },

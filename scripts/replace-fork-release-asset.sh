@@ -31,6 +31,39 @@ is_http_404() {
     grep -Eq 'HTTP 404|"status"[[:space:]]*:[[:space:]]*"?404"?'
 }
 
+is_name_collision() {
+  printf '%s\n' "$1" |
+    grep -Eq 'HTTP 422|ReleaseAsset\.name already exists'
+}
+
+wait_for_asset_visibility() {
+  local attempt asset_id asset_name assets probe_output
+  local attempts="${RELEASE_ASSET_VISIBILITY_ATTEMPTS:-30}"
+  local delay="${RELEASE_ASSET_VISIBILITY_DELAY_SECONDS:-2}"
+
+  for ((attempt = 1; attempt <= attempts; attempt++)); do
+    assets=""
+    if assets="$(gh api "repos/$FORK_REPO/releases/tags/$TAG" \
+      --jq '.assets[] | [.id, .name] | @tsv' 2>&1)"; then
+      while IFS=$'\t' read -r asset_id asset_name; do
+        if [[ "$asset_id" =~ ^[0-9]+$ && "$asset_name" == "$ASSET_NAME" ]]; then
+          probe_output=""
+          if probe_output="$(gh api \
+            "repos/$FORK_REPO/releases/assets/$asset_id" 2>&1)"; then
+            return 0
+          fi
+        fi
+      done <<<"$assets"
+    fi
+
+    if [[ "$attempt" -lt "$attempts" ]]; then
+      sleep "$delay"
+    fi
+  done
+
+  return 1
+}
+
 release_assets=""
 if ! release_assets="$(gh api "repos/$FORK_REPO/releases/tags/$TAG" \
   --jq '.assets[] | [.id, .name] | @tsv' 2>&1)"; then
@@ -91,4 +124,23 @@ else
 fi
 
 log "uploading $ASSET_NAME"
-gh release upload "$TAG" "$ASSET_PATH" --repo "$FORK_REPO"
+upload_output=""
+if upload_output="$(gh release upload "$TAG" "$ASSET_PATH" \
+  --repo "$FORK_REPO" 2>&1)"; then
+  :
+else
+  upload_status=$?
+  if ! is_name_collision "$upload_output"; then
+    printf '%s\n' "$upload_output" >&2
+    exit "$upload_status"
+  fi
+  log "asset name is reserved; waiting for the completed upload to become visible"
+fi
+
+if ! wait_for_asset_visibility; then
+  printf '%s\n' "$upload_output" >&2
+  echo "error: uploaded asset did not become visible: $FORK_REPO@$TAG/$ASSET_NAME" >&2
+  exit 1
+fi
+
+log "release asset is visible: $ASSET_NAME"

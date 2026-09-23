@@ -72,6 +72,9 @@ if [[ "$1" == "api" && "$2" == *"/releases/assets/"* ]]; then
       fi
       exit 0
       ;;
+    *583459102)
+      exit 0
+      ;;
   esac
 fi
 
@@ -107,6 +110,8 @@ chmod +x "$MOCK_BIN/gh"
 
 export GH_CALL_LOG="$CALL_LOG"
 export PATH="$MOCK_BIN:$PATH"
+export RELEASE_ASSET_VISIBILITY_ATTEMPTS=3
+export RELEASE_ASSET_VISIBILITY_DELAY_SECONDS=0
 
 asset_path="$TEST_DIR/cmux-test-macos.zip"
 : >"$asset_path"

@@ -26,6 +26,14 @@ set -euo pipefail
 printf '%s\n' "$*" >>"$GH_CALL_LOG"
 
 if [[ "$1" == "api" && "$2" == *"/releases/tags/"* ]]; then
+  if [[ "${GH_ASSET_MODE:-duplicates}" == "eventual" ]]; then
+    asset_view_count="$(grep -c '/releases/tags/' "$GH_CALL_LOG")"
+    if [[ "$asset_view_count" -ge 3 ]]; then
+      printf '%s\n' $'583459102\tcmux-test-macos.zip'
+    fi
+    exit 0
+  fi
+
   if [[ "${GH_ASSET_MODE:-duplicates}" == "unrelated" ]]; then
     printf '%s\n' \
       $'544133625\tcmux-test-macos.zip' \
@@ -76,6 +84,11 @@ if [[ "$1" == "api" && "$2" == "--method" ]]; then
 fi
 
 if [[ "$1" == "release" && "$2" == "upload" ]]; then
+  if [[ "${GH_UPLOAD_MODE:-success}" == "already_exists" ]]; then
+    echo 'HTTP 422: Validation Failed (https://api.github.com/repos/apohl79/cmux/releases/394506541/assets)' >&2
+    echo 'ReleaseAsset.name already exists' >&2
+    exit 1
+  fi
   exit 0
 fi
 
@@ -172,5 +185,22 @@ fi
 if grep -Eq 'release (delete|create|upload)' "$CALL_LOG"; then
   fail "mutated a release containing unrelated assets"
 fi
+
+: >"$CALL_LOG"
+export GH_ASSET_MODE=eventual
+export GH_UPLOAD_MODE=already_exists
+
+"$HELPER" \
+  apohl79/cmux \
+  test-tag \
+  "$asset_path" \
+  cmux-test-macos.zip \
+  test-title \
+  test-notes
+
+[[ "$(grep -c 'release upload' "$CALL_LOG")" -eq 1 ]] ||
+  fail "did not make exactly one upload attempt during eventual consistency"
+[[ "$(grep -c '/releases/tags/' "$CALL_LOG")" -ge 3 ]] ||
+  fail "did not poll until the uploaded asset became visible"
 
 echo "PASS: fork release asset replacement repairs zombie assets without risking unrelated assets"

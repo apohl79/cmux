@@ -533,36 +533,11 @@ if [[ "$UPLOAD" == "1" ]]; then
       --notes "Fork build for cmux ${OFFICIAL_VERSION}."
   fi
 
-  release_assets=""
-  if ! release_assets="$(gh api "repos/$FORK_REPO/releases/tags/$TAG" \
-    --jq '.assets[] | [.id, .name] | @tsv' 2>&1)"; then
-    echo "$release_assets" >&2
-    exit 1
-  fi
-
-  while IFS=$'\t' read -r asset_id asset_name; do
-    [[ "$asset_id" =~ ^[0-9]+$ && "$asset_name" == "$ASSET_NAME" ]] || continue
-
-    log "removing existing release asset $ASSET_NAME (id: $asset_id)"
-    delete_output=""
-    if delete_output="$(gh api --method DELETE \
-      "repos/$FORK_REPO/releases/assets/$asset_id" 2>&1)"; then
-      continue
-    else
-      delete_status=$?
-    fi
-
-    if [[ "$delete_output" == *"HTTP 404: Not Found"* ]]; then
-      log "release asset id $asset_id is already absent; continuing"
-      continue
-    fi
-
-    echo "$delete_output" >&2
-    exit "$delete_status"
-  done <<<"$release_assets"
-
-  log "uploading $ASSET_NAME"
-  gh release upload "$TAG" "$ZIP_PATH" --repo "$FORK_REPO"
+  "$SCRIPT_DIR/replace-fork-release-asset.sh" \
+    "$FORK_REPO" \
+    "$TAG" \
+    "$ZIP_PATH" \
+    "$ASSET_NAME"
 fi
 
 log "fork build ready"

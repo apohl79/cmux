@@ -42,6 +42,9 @@ jobs:
       - name: Validate release asset guard
         run: node scripts/release_asset_guard.test.js
 
+      - name: Validate fork release asset replacement
+        run: ./tests/test_build_fork_release_asset_replacement.sh
+
       - name: Validate current GhosttyKit checksum pin
         run: ./tests/test_ci_ghosttykit_checksum_present.sh
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Install the apohl79/cmux fork build. Prefer downloading the fork release zip;
-# build/sign/notarize/upload it locally only when the release asset is missing,
-# then refresh Codex and Claude Code session-restore hooks.
+# build/sign/notarize it locally only when the release asset is missing, then
+# refresh Codex and Claude Code session-restore hooks.
 
 set -euo pipefail
 
@@ -11,7 +11,7 @@ Usage: ./scripts/install-fork.sh [options]
 
 Downloads the fork release zip from apohl79/cmux and installs it. If the release
 asset is unavailable, calls ./scripts/build-fork.sh to build/sign/notarize,
-create the release if needed, replace the matching asset, then installs it.
+package the app locally without publishing a release asset, then installs it.
 After installation, refreshes Codex hooks and validates the bundled Claude Code
 wrapper used to inject current hooks into new sessions.
 
@@ -54,6 +54,7 @@ TAG_OVERRIDE="${TAG:-}"
 ASSET_NAME_OVERRIDE="${ASSET_NAME:-}"
 FORCE_BUILD=0
 BUILD_ARGS=()
+PLISTBUDDY="${PLISTBUDDY:-/usr/libexec/PlistBuddy}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -146,6 +147,7 @@ build_release_asset() {
     --tag "$TAG"
     --asset-name "$ASSET_NAME"
     --output-dir "$DOWNLOAD_DIR"
+    --no-upload
   )
   if [[ "${#BUILD_ARGS[@]}" -gt 0 ]]; then
     build_cmd+=("${BUILD_ARGS[@]}")
@@ -204,7 +206,7 @@ fi
 log "removing com.apple.quarantine attribute"
 xattr -dr com.apple.quarantine "$TARGET" 2>/dev/null || true
 
-bundle_executable="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$TARGET/Contents/Info.plist" 2>/dev/null || echo cmux)"
+bundle_executable="$("$PLISTBUDDY" -c 'Print :CFBundleExecutable' "$TARGET/Contents/Info.plist" 2>/dev/null || echo cmux)"
 binary="$TARGET/Contents/MacOS/$bundle_executable"
 if [[ ! -x "$binary" ]]; then
   echo "error: installed binary is not executable: $binary" >&2
@@ -231,9 +233,9 @@ log "installing or updating Codex session-restore hooks"
 "$bundled_cli" hooks codex install --yes
 log "Claude Code session-restore hooks updated via bundled wrapper"
 
-bundle_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$TARGET/Contents/Info.plist" 2>/dev/null || echo '?')"
-short_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$TARGET/Contents/Info.plist" 2>/dev/null || echo '?')"
-build_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$TARGET/Contents/Info.plist" 2>/dev/null || echo '?')"
+bundle_id="$("$PLISTBUDDY" -c 'Print :CFBundleIdentifier' "$TARGET/Contents/Info.plist" 2>/dev/null || echo '?')"
+short_version="$("$PLISTBUDDY" -c 'Print :CFBundleShortVersionString' "$TARGET/Contents/Info.plist" 2>/dev/null || echo '?')"
+build_version="$("$PLISTBUDDY" -c 'Print :CFBundleVersion' "$TARGET/Contents/Info.plist" 2>/dev/null || echo '?')"
 
 log "installed:"
 echo "  path:            $TARGET"

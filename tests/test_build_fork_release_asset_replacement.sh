@@ -25,11 +25,16 @@ set -euo pipefail
 
 printf '%s\n' "$*" >>"$GH_CALL_LOG"
 
-if [[ "$1" == "api" && "$2" != "--method" ]]; then
+if [[ "$1" == "api" && "$2" == *"/releases/tags/"* ]]; then
   if [[ "${GH_ASSET_MODE:-duplicates}" == "unrelated" ]]; then
     printf '%s\n' \
       $'544133625\tcmux-test-macos.zip' \
       $'544133999\tchecksums.txt'
+    exit 0
+  fi
+
+  if [[ "${GH_ASSET_MODE:-duplicates}" == "accessible" ]]; then
+    printf '%s\n' $'544133627\tcmux-test-macos.zip'
     exit 0
   fi
 
@@ -40,11 +45,11 @@ if [[ "$1" == "api" && "$2" != "--method" ]]; then
   exit 0
 fi
 
-if [[ "$1" == "api" && "$2" == "--method" ]]; then
-  case "$4" in
+if [[ "$1" == "api" && "$2" == *"/releases/assets/"* ]]; then
+  case "$2" in
     *544133625)
       printf '%s\n' \
-        '{"message":"Not Found","documentation_url":"https://docs.github.com/rest/releases/assets#delete-a-release-asset","status":"404"}' \
+        '{"message":"Not Found","documentation_url":"https://docs.github.com/rest/releases/assets#get-a-release-asset","status":"404"}' \
         'gh: Not Found (HTTP 404)' >&2
       exit 1
       ;;
@@ -53,13 +58,21 @@ if [[ "$1" == "api" && "$2" == "--method" ]]; then
       exit 1
       ;;
     *544133627)
-      if [[ "${GH_DELETE_MODE:-success}" == "forbidden" ]]; then
+      if [[ "${GH_PROBE_MODE:-success}" == "forbidden" ]]; then
         echo 'gh: Resource not accessible by personal access token (HTTP 403)' >&2
         exit 1
       fi
       exit 0
       ;;
   esac
+fi
+
+if [[ "$1" == "api" && "$2" == "--method" ]]; then
+  if [[ "${GH_DELETE_MODE:-success}" == "forbidden" ]]; then
+    echo 'gh: Resource not accessible by personal access token (HTTP 403)' >&2
+    exit 1
+  fi
+  exit 0
 fi
 
 if [[ "$1" == "release" && "$2" == "upload" ]]; then
@@ -97,8 +110,6 @@ grep -Fq 'releases/assets/544133625' "$CALL_LOG" ||
   fail "did not attempt the JSON-status 404 asset"
 grep -Fq 'releases/assets/544133626' "$CALL_LOG" ||
   fail "did not attempt the legacy-text 404 asset"
-grep -Fq 'releases/assets/544133627' "$CALL_LOG" ||
-  fail "did not delete the live duplicate asset"
 grep -Fq 'release delete test-tag --repo apohl79/cmux --yes' "$CALL_LOG" ||
   fail "did not recreate the release after encountering a zombie asset"
 grep -Fq 'release create test-tag --repo apohl79/cmux --title test-title --notes test-notes' "$CALL_LOG" ||
@@ -110,6 +121,7 @@ if grep -Fq -- '--clobber' "$CALL_LOG"; then
 fi
 
 : >"$CALL_LOG"
+export GH_ASSET_MODE=accessible
 export GH_DELETE_MODE=forbidden
 
 if "$HELPER" \
@@ -128,6 +140,23 @@ fi
 
 : >"$CALL_LOG"
 unset GH_DELETE_MODE
+export GH_ASSET_MODE=accessible
+
+"$HELPER" \
+  apohl79/cmux \
+  test-tag \
+  "$asset_path" \
+  cmux-test-macos.zip \
+  test-title \
+  test-notes
+
+grep -Fq 'api --method DELETE repos/apohl79/cmux/releases/assets/544133627' "$CALL_LOG" ||
+  fail "did not delete an accessible matching asset"
+if grep -Eq 'release (delete|create)' "$CALL_LOG"; then
+  fail "recreated a release whose matching assets were accessible"
+fi
+
+: >"$CALL_LOG"
 export GH_ASSET_MODE=unrelated
 
 if "$HELPER" \

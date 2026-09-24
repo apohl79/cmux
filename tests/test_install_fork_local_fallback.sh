@@ -22,6 +22,7 @@ cleanup() {
 trap cleanup EXIT
 
 cp "$PROJECT_DIR/scripts/install-fork.sh" "$FIXTURE_PROJECT/scripts/install-fork.sh"
+cp "$PROJECT_DIR/scripts/apohl79_build_number.txt" "$FIXTURE_PROJECT/scripts/apohl79_build_number.txt"
 printf 'MARKETING_VERSION = 0.64.5;\n' \
   >"$FIXTURE_PROJECT/GhosttyTabs.xcodeproj/project.pbxproj"
 
@@ -45,6 +46,10 @@ done
 if [[ "$no_upload" != "1" ]]; then
   echo "build fallback attempted to publish a release asset" >&2
   exit 42
+fi
+if [[ "$asset_name" != "cmux-0.64.5-apohl79-build-86-macos.zip" ]]; then
+  echo "unexpected build-number asset name: $asset_name" >&2
+  exit 43
 fi
 
 mkdir -p "$output_dir"

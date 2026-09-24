@@ -20,7 +20,7 @@ Options:
   --repo <owner/repo>       GitHub repo for the fork release (default: apohl79/cmux).
   --version <version>       Release version (default: <MARKETING_VERSION>-apohl79).
   --tag <tag>               GitHub release tag (default: release version).
-  --asset-name <name>       Release asset name (default: cmux-<version>-macos.zip).
+  --asset-name <name>       Release asset name (default: cmux-<version>-build-<number>-macos.zip).
   --download-dir <path>     Download/build artifact dir (default: build/fork-downloads).
   --force-build             Skip download and call build-fork.sh immediately.
 
@@ -91,20 +91,43 @@ done
 
 log() { printf '==> %s\n' "$*"; }
 
+configure_fork_github_auth() {
+  [[ -n "${GH_TOKEN:-}" ]] && return 0
+  command -v gh >/dev/null 2>&1 || return 0
+
+  local repo_owner="${FORK_REPO%%/*}"
+  local owner_token
+  owner_token="$(gh auth token --user "$repo_owner" 2>/dev/null || true)"
+  if [[ -n "$owner_token" ]]; then
+    export GH_TOKEN="$owner_token"
+  fi
+}
+
 PROJECT_FILE="$PROJECT_DIR/GhosttyTabs.xcodeproj/project.pbxproj"
+BUILD_NUMBER_FILE="$SCRIPT_DIR/apohl79_build_number.txt"
 OFFICIAL_VERSION="$(grep -m1 'MARKETING_VERSION = ' "$PROJECT_FILE" | sed 's/.*= \(.*\);/\1/')"
 if [[ -z "$OFFICIAL_VERSION" ]]; then
   echo "error: could not determine MARKETING_VERSION from $PROJECT_FILE" >&2
   exit 1
 fi
+if [[ ! -f "$BUILD_NUMBER_FILE" ]]; then
+  echo "error: missing fork build number file: $BUILD_NUMBER_FILE" >&2
+  exit 1
+fi
+BUILD_NUMBER="$(tr -d '[:space:]' <"$BUILD_NUMBER_FILE")"
+if [[ ! "$BUILD_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
+  echo "error: invalid fork build number in $BUILD_NUMBER_FILE: '$BUILD_NUMBER'" >&2
+  exit 1
+fi
 
 VERSION="${VERSION_OVERRIDE:-${OFFICIAL_VERSION}-apohl79}"
 TAG="${TAG_OVERRIDE:-$VERSION}"
-ASSET_NAME="${ASSET_NAME_OVERRIDE:-cmux-${VERSION}-macos.zip}"
+ASSET_NAME="${ASSET_NAME_OVERRIDE:-cmux-${VERSION}-build-${BUILD_NUMBER}-macos.zip}"
 
 mkdir -p "$DOWNLOAD_DIR"
 DOWNLOAD_DIR="$(cd "$DOWNLOAD_DIR" && pwd)"
 ZIP_PATH="$DOWNLOAD_DIR/$ASSET_NAME"
+configure_fork_github_auth
 
 download_release_asset() {
   if [[ "$FORCE_BUILD" == "1" ]]; then

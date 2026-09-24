@@ -33,7 +33,7 @@ is_http_404() {
 
 is_name_collision() {
   printf '%s\n' "$1" |
-    grep -Eq 'HTTP 422|ReleaseAsset\.name already exists'
+    grep -Eiq 'HTTP 422|ReleaseAsset\.name already exists|asset under the same name already exists'
 }
 
 asset_id_was_preexisting() {
@@ -131,8 +131,30 @@ else
   while IFS= read -r asset_id; do
     [[ "$asset_id" =~ ^[0-9]+$ ]] || continue
     log "removing existing release asset $ASSET_NAME (id: $asset_id)"
-    gh api --method DELETE \
-      "repos/$FORK_REPO/releases/assets/$asset_id" >/dev/null
+    delete_output=""
+    if delete_output="$(gh api --method DELETE \
+      "repos/$FORK_REPO/releases/assets/$asset_id" 2>&1)"; then
+      :
+    else
+      delete_status=$?
+      if is_http_404 "$delete_output"; then
+        quarantine_name="${ASSET_NAME}.stale-${asset_id}"
+        quarantine_output=""
+        if quarantine_output="$(gh api --method PATCH \
+          "repos/$FORK_REPO/releases/assets/$asset_id" \
+          --raw-field "name=$quarantine_name" 2>&1)"; then
+          log "quarantined stale release asset as $quarantine_name"
+        elif is_http_404 "$quarantine_output"; then
+          log "release asset $ASSET_NAME was already deleted; continuing"
+        else
+          printf '%s\n' "$quarantine_output" >&2
+          exit "$delete_status"
+        fi
+      else
+        printf '%s\n' "$delete_output" >&2
+        exit "$delete_status"
+      fi
+    fi
   done <<<"$accessible_asset_ids"
 fi
 

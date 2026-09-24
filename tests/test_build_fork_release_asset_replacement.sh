@@ -94,7 +94,18 @@ if [[ "$1" == "api" && "$2" == *"/releases/assets/"* ]]; then
   esac
 fi
 
+if [[ "$1" == "api" && "$2" == "--method" && "$3" == "PATCH" ]]; then
+  if [[ "${GH_DELETE_MODE:-success}" == "stale_404" ]]; then
+    exit 0
+  fi
+  exit 0
+fi
+
 if [[ "$1" == "api" && "$2" == "--method" ]]; then
+  if [[ "${GH_DELETE_MODE:-success}" == "stale_404" ]]; then
+    echo 'gh: Not Found (HTTP 404)' >&2
+    exit 1
+  fi
   if [[ "${GH_DELETE_MODE:-success}" == "forbidden" ]]; then
     echo 'gh: Resource not accessible by personal access token (HTTP 403)' >&2
     exit 1
@@ -114,8 +125,7 @@ if [[ "$1" == "release" && "$2" == "upload" ]]; then
   fi
 
   if [[ "${GH_UPLOAD_MODE:-success}" == "already_exists" ]]; then
-    echo 'HTTP 422: Validation Failed (https://api.github.com/repos/apohl79/cmux/releases/394506541/assets)' >&2
-    echo 'ReleaseAsset.name already exists' >&2
+    echo 'asset under the same name already exists' >&2
     exit 1
   fi
   exit 0
@@ -199,6 +209,21 @@ grep -Fq 'api --method DELETE repos/apohl79/cmux/releases/assets/544133627' "$CA
 if grep -Eq 'release (delete|create)' "$CALL_LOG"; then
   fail "recreated a release whose matching assets were accessible"
 fi
+
+: >"$CALL_LOG"
+export GH_DELETE_MODE=stale_404
+export GH_ASSET_MODE=accessible
+
+"$HELPER" \
+  apohl79/cmux \
+  test-tag \
+  "$asset_path" \
+  cmux-test-macos.zip \
+  test-title \
+  test-notes
+
+grep -Fq 'release upload' "$CALL_LOG" ||
+  fail "did not upload after a stale 404 during asset deletion"
 
 : >"$CALL_LOG"
 export GH_ASSET_MODE=unrelated
